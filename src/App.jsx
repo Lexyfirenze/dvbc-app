@@ -312,7 +312,7 @@ function Dashboard({ profile, members, onNav }) {
   let daysUntilRehearsal = (7 - now.getDay()) % 7;
   if (daysUntilRehearsal === 0) {
     const rehearsalTime = new Date(now);
-    rehearsalTime.setHours(19, 30, 0, 0);
+    rehearsalTime.setHours(14, 30, 0, 0);
     if (now > rehearsalTime) daysUntilRehearsal = 7;
   }
   const rehearsalLabel =
@@ -352,7 +352,7 @@ function Dashboard({ profile, members, onNav }) {
           </div>
           <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Rehearsal</div>
           <div style={{ fontFamily: "Lora, serif", fontSize: 20, marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <Clock size={16} /> Sunday, 7:30 PM
+            <Clock size={16} /> Sunday, 2:30 PM
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
             <MapPin size={13} /> St. Peter's Anglican Church, Ikenegbu, Owerri
