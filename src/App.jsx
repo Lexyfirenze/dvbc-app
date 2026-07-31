@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera } from "lucide-react";
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -579,7 +579,17 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
                   <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Clocked in {formatClockTime(m.clocked_in_at)}</div>
                 )}
               </div>
-              <Pill tone={m.status}>{m.status}</Pill>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Pill tone={m.status}>{m.status}</Pill>
+                {m.remark && (
+                  <span style={{
+                    background: C.amberBg, color: C.amberText, fontSize: 10, fontWeight: 700,
+                    padding: "5px 9px", borderRadius: 999, whiteSpace: "nowrap",
+                  }}>
+                    Late
+                  </span>
+                )}
+              </div>
             </>
           );
 
@@ -671,6 +681,276 @@ function Library({ favorites, toggleFavorite }) {
   );
 }
 
+function Executives({ isAdmin }) {
+  const [executives, setExecutives] = useState([]);
+  const [leaders, setLeaders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [showExecForm, setShowExecForm] = useState(false);
+  const [editingExec, setEditingExec] = useState(null);
+  const [execForm, setExecForm] = useState({ name: "", role: "", bio: "", contact: "" });
+  const [execPhotoFile, setExecPhotoFile] = useState(null);
+  const [savingExec, setSavingExec] = useState(false);
+  const [execError, setExecError] = useState("");
+
+  const [showLeaderForm, setShowLeaderForm] = useState(false);
+  const [editingLeader, setEditingLeader] = useState(null);
+  const [leaderForm, setLeaderForm] = useState({ name: "", voice_part: VOICE_PARTS[0] });
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const [execRes, leaderRes] = await Promise.all([
+      supabase.from("executives").select("*").order("display_order", { ascending: true }),
+      supabase.from("voice_part_leaders").select("*").order("display_order", { ascending: true }),
+    ]);
+    setExecutives(execRes.data || []);
+    setLeaders(leaderRes.data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const resetExecForm = () => {
+    setExecForm({ name: "", role: "", bio: "", contact: "" });
+    setExecPhotoFile(null);
+    setEditingExec(null);
+    setShowExecForm(false);
+    setExecError("");
+  };
+
+  const startEditExec = (exec) => {
+    setEditingExec(exec);
+    setExecForm({ name: exec.name || "", role: exec.role || "", bio: exec.bio || "", contact: exec.contact || "" });
+    setExecPhotoFile(null);
+    setShowExecForm(true);
+  };
+
+  const saveExec = async () => {
+    if (!execForm.name.trim() || !execForm.role.trim()) {
+      setExecError("Name and role are required.");
+      return;
+    }
+    setSavingExec(true);
+    setExecError("");
+
+    let photo_url = editingExec?.photo_url || null;
+    try {
+      if (execPhotoFile) {
+        const ext = (execPhotoFile.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: uploadError } = await supabase.storage.from("executive-photos").upload(path, execPhotoFile);
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("executive-photos").getPublicUrl(path);
+        photo_url = data.publicUrl;
+      }
+
+      const payload = { ...execForm, photo_url };
+      if (editingExec) {
+        const { error } = await supabase.from("executives").update(payload).eq("id", editingExec.id);
+        if (error) throw error;
+      } else {
+        const maxOrder = executives.reduce((m, e) => Math.max(m, e.display_order || 0), 0);
+        const { error } = await supabase.from("executives").insert({ ...payload, display_order: maxOrder + 1 });
+        if (error) throw error;
+      }
+      resetExecForm();
+      loadData();
+    } catch (err) {
+      setExecError(err.message || "Could not save. Please try again.");
+    } finally {
+      setSavingExec(false);
+    }
+  };
+
+  const deleteExec = async (exec) => {
+    if (!window.confirm(`Remove ${exec.name} from executives?`)) return;
+    await supabase.from("executives").delete().eq("id", exec.id);
+    loadData();
+  };
+
+  const resetLeaderForm = () => {
+    setLeaderForm({ name: "", voice_part: VOICE_PARTS[0] });
+    setEditingLeader(null);
+    setShowLeaderForm(false);
+  };
+
+  const startEditLeader = (leader) => {
+    setEditingLeader(leader);
+    setLeaderForm({ name: leader.name || "", voice_part: leader.voice_part || VOICE_PARTS[0] });
+    setShowLeaderForm(true);
+  };
+
+  const saveLeader = async () => {
+    if (!leaderForm.name.trim()) return;
+    if (editingLeader) {
+      await supabase.from("voice_part_leaders").update(leaderForm).eq("id", editingLeader.id);
+    } else {
+      const maxOrder = leaders.reduce((m, l) => Math.max(m, l.display_order || 0), 0);
+      await supabase.from("voice_part_leaders").insert({ ...leaderForm, display_order: maxOrder + 1 });
+    }
+    resetLeaderForm();
+    loadData();
+  };
+
+  const deleteLeader = async (leader) => {
+    if (!window.confirm(`Remove ${leader.name} as ${leader.voice_part} leader?`)) return;
+    await supabase.from("voice_part_leaders").delete().eq("id", leader.id);
+    loadData();
+  };
+
+  const inputStyle = {
+    border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12,
+    padding: "12px 14px", fontSize: 13.5, width: "100%", outline: "none", color: C.ink,
+  };
+
+  return (
+    <div style={{ paddingBottom: 110 }}>
+      <TopHeader title="Executives" subtitle="Leadership & voice part leaders" />
+
+      <div style={{ padding: "18px 24px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Executives</div>
+          {isAdmin && (
+            <button
+              onClick={() => { setEditingExec(null); setExecForm({ name: "", role: "", bio: "", contact: "" }); setShowExecForm(true); }}
+              className="dvbc-tap"
+              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+            >
+              + Add
+            </button>
+          )}
+        </div>
+
+        {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+        {!loading && executives.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No executives added yet.</div>
+        )}
+
+        {executives.map((exec) => (
+          <div key={exec.id} style={{ display: "flex", gap: 12, padding: "14px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+              background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 18, border: `2px solid ${C.lilac}`,
+            }}>
+              {exec.photo_url
+                ? <img src={exec.photo_url} alt={exec.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : exec.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{exec.name}</div>
+              <div style={{ fontSize: 11.5, color: C.garnet, fontWeight: 600, marginTop: 1 }}>{exec.role}</div>
+              {exec.bio && <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 5, lineHeight: 1.5 }}>{exec.bio}</div>}
+              {exec.contact && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>{exec.contact}</div>}
+              {isAdmin && (
+                <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+                  <button onClick={() => startEditExec(exec)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>Edit</button>
+                  <button onClick={() => deleteExec(exec)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.roseDeep, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>Delete</button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {showExecForm && (
+          <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 14 }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+              {editingExec ? "Edit Executive" : "Add Executive"}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input style={inputStyle} placeholder="Full name" value={execForm.name} onChange={(e) => setExecForm({ ...execForm, name: e.target.value })} />
+              <input style={inputStyle} placeholder="Role (e.g. President)" value={execForm.role} onChange={(e) => setExecForm({ ...execForm, role: e.target.value })} />
+              <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder="Short bio" value={execForm.bio} onChange={(e) => setExecForm({ ...execForm, bio: e.target.value })} />
+              <input style={inputStyle} placeholder="Contact (email or phone)" value={execForm.contact} onChange={(e) => setExecForm({ ...execForm, contact: e.target.value })} />
+              <input type="file" accept="image/*" onChange={(e) => setExecPhotoFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+            </div>
+            {execError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 10 }}>
+                <AlertCircle size={13} /> {execError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={saveExec} disabled={savingExec} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingExec ? "default" : "pointer", opacity: savingExec ? 0.8 : 1 }}>
+                {savingExec ? "Saving…" : "Save"}
+              </button>
+              <button onClick={resetExecForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "28px 0 4px" }}>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Voice Part Leaders</div>
+          {isAdmin && (
+            <button
+              onClick={() => { setEditingLeader(null); setLeaderForm({ name: "", voice_part: VOICE_PARTS[0] }); setShowLeaderForm(true); }}
+              className="dvbc-tap"
+              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+            >
+              + Add
+            </button>
+          )}
+        </div>
+
+        {!loading && leaders.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No voice part leaders added yet.</div>
+        )}
+
+        {leaders.map((leader) => (
+          <div key={leader.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+              background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+            }}>
+              {leader.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{leader.name}</div>
+            </div>
+            <Pill>{leader.voice_part}</Pill>
+            {isAdmin && (
+              <div style={{ display: "flex", gap: 10, marginLeft: 10 }}>
+                <button onClick={() => startEditLeader(leader)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Edit</button>
+                <button onClick={() => deleteLeader(leader)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.roseDeep, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Delete</button>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {showLeaderForm && (
+          <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 14 }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+              {editingLeader ? "Edit Leader" : "Add Voice Part Leader"}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input style={inputStyle} placeholder="Full name" value={leaderForm.name} onChange={(e) => setLeaderForm({ ...leaderForm, name: e.target.value })} />
+              <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                <select
+                  value={leaderForm.voice_part}
+                  onChange={(e) => setLeaderForm({ ...leaderForm, voice_part: e.target.value })}
+                  style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                >
+                  {VOICE_PARTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={saveLeader} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                Save
+              </button>
+              <button onClick={resetLeaderForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onUploadAvatar, avatarUploading, avatarError }) {
   const present = members.filter((m) => m.status === "present").length;
   const displayName = profile?.name || "Member";
@@ -728,7 +1008,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
         </div>
 
         <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Settings</div>
-        {["Notifications", "Privacy", "Section leaders", "About De Voci Belli Chorale"].map((label) => (
+        {["Notifications", "Privacy", "About De Voci Belli Chorale"].map((label) => (
           <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink }}>
             {label}
             <ChevronLeft size={16} color={C.inkSoft} style={{ transform: "rotate(180deg)" }} />
@@ -797,6 +1077,7 @@ function BottomNav({ screen, onNav }) {
   const items = [
     { key: "dashboard", label: "Home", icon: Home },
     { key: "attendance", label: "Attendance", icon: CheckSquare },
+    { key: "executives", label: "Execs", icon: Users },
     { key: "library", label: "Library", icon: Music2 },
     { key: "profile", label: "Profile", icon: User },
   ];
@@ -1006,6 +1287,9 @@ export default function App() {
           members={members} loading={loadingMembers} onCycle={cycleStatus} isAdmin={isAdmin}
           profile={profile} onClockIn={handleClockIn} clockingIn={clockingIn} clockInError={clockInError}
         />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "executives" && (
+        <Executives isAdmin={isAdmin} />
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "library" && (
         <Library favorites={favorites} toggleFavorite={toggleFavorite} />
