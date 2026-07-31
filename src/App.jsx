@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle } from "lucide-react";
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
+import { supabase } from "./supabaseClient";
 
 /* ---------- Design tokens: red / purple / lilac interface ---------- */
 const C = {
@@ -25,8 +26,9 @@ const C = {
 };
 
 const GRADIENT = `linear-gradient(135deg, ${C.garnet} 0%, ${C.plum} 62%, #8C5FA0 100%)`;
+const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 
-/* ---------- Local persistence (this device only) ---------- */
+/* ---------- Local persistence (favorites only — this device) ---------- */
 const store = {
   get(key, fallback) {
     try {
@@ -39,23 +41,9 @@ const store = {
   set(key, value) {
     try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) { /* storage unavailable (private mode, full disk, etc.) */ }
+    } catch (e) { /* storage unavailable */ }
   },
 };
-
-/* ---------- Seed data ---------- */
-const seedMembers = [
-  { id: 1, name: "Chidinma Nwosu", part: "Soprano I", status: "present" },
-  { id: 2, name: "Tomiwa Adisa", part: "Alto II", status: "present" },
-  { id: 3, name: "Emeka Okoro", part: "Tenor I", status: "absent" },
-  { id: 4, name: "Femi Balogun", part: "Bass II", status: "present" },
-  { id: 5, name: "Ngozi Kalu", part: "Soprano II", status: "present" },
-  { id: 6, name: "Uche Eze", part: "Alto I", status: "excused" },
-  { id: 7, name: "Kelechi Obi", part: "Tenor II", status: "present" },
-  { id: 8, name: "Ifeanyi Aguocha", part: "Bass I", status: "present" },
-  { id: 9, name: "Bisi Adeyemi", part: "Soprano I", status: "absent" },
-  { id: 10, name: "Damilola Kuti", part: "Alto II", status: "present" },
-];
 
 const seedLibrary = [
   { id: 1, title: "Ave Verum Corpus", composer: "W. A. Mozart", tag: "SATB", part: "All" },
@@ -136,25 +124,57 @@ function Chip({ active, children, onClick }) {
 }
 
 /* ---------- Screens ---------- */
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onAuthed }) {
+  const [mode, setMode] = useState("signin"); // "signin" | "register"
+  const [name, setName] = useState("");
+  const [part, setPart] = useState(VOICE_PARTS[0]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError("Enter your email and password to continue.");
+    setError("");
+    if (!email.trim() || !password.trim() || (mode === "register" && !name.trim())) {
+      setError("Please fill in every field to continue.");
       return;
     }
-    setError("");
     setBusy(true);
-    setTimeout(() => {
+    try {
+      if (mode === "register") {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+        if (signUpError) throw signUpError;
+        const userId = data.user?.id;
+        if (userId) {
+          const { error: insertError } = await supabase
+            .from("members")
+            .insert({ user_id: userId, name: name.trim(), part, status: "present" });
+          if (insertError) throw insertError;
+        }
+        if (!data.session) {
+          setError("Account created — you can sign in now.");
+          setMode("signin");
+          setBusy(false);
+          return;
+        }
+      } else {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (signInError) throw signInError;
+      }
+      onAuthed();
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
       setBusy(false);
-      onLogin(email);
-    }, 650);
+    }
   };
 
   return (
@@ -180,12 +200,40 @@ function LoginScreen({ onLogin }) {
       </div>
 
       <div style={{ flex: 1, background: C.parchment, borderRadius: "26px 26px 0 0", marginTop: -18, padding: "30px 26px calc(env(safe-area-inset-bottom, 0px) + 30px)" }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 22, color: C.ink, marginBottom: 6 }}>Welcome back</div>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 22, color: C.ink, marginBottom: 6 }}>
+          {mode === "signin" ? "Welcome back" : "Join the chorale"}
+        </div>
         <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 22 }}>
-          Sign in to view rehearsals, mark attendance, and reach your music library.
+          {mode === "signin"
+            ? "Sign in to view rehearsals, mark attendance, and reach your music library."
+            : "Register once — your name and voice part will appear on the shared attendance sheet."}
         </div>
 
         <form onSubmit={submit}>
+          {mode === "register" && (
+            <>
+              <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>Full Name</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "12px 14px", margin: "6px 0 16px" }}>
+                <UserPlus size={16} color={C.inkSoft} />
+                <input
+                  value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="Your full name"
+                  style={{ border: "none", outline: "none", fontSize: 13.5, flex: 1, background: "transparent", color: C.ink }}
+                />
+              </div>
+
+              <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>Voice Part</label>
+              <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px", margin: "6px 0 16px" }}>
+                <select
+                  value={part} onChange={(e) => setPart(e.target.value)}
+                  style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                >
+                  {VOICE_PARTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+
           <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>Email</label>
           <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "12px 14px", margin: "6px 0 16px" }}>
             <Mail size={16} color={C.inkSoft} />
@@ -215,24 +263,28 @@ function LoginScreen({ onLogin }) {
             </div>
           )}
 
-          <div style={{ textAlign: "right", fontSize: 11.5, color: C.plum, fontWeight: 600, margin: "6px 0 20px" }}>Forgot password?</div>
-
           <button
             type="submit" disabled={busy} className="dvbc-tap"
             style={{
               width: "100%", background: GRADIENT, color: "#fff", fontWeight: 600, fontSize: 15,
               padding: 16, borderRadius: 14, border: "none", cursor: busy ? "default" : "pointer",
-              opacity: busy ? 0.8 : 1,
+              opacity: busy ? 0.8 : 1, marginTop: mode === "signin" ? 20 : 4,
             }}
           >
-            {busy ? "Signing in…" : "Sign In"}
+            {busy ? "Please wait…" : mode === "signin" ? "Sign In" : "Create Account"}
           </button>
         </form>
 
         <div style={{ textAlign: "center", fontSize: 11, color: "#BBAEC4", margin: "18px 0", letterSpacing: 1 }}>— OR —</div>
-        <div style={{ textAlign: "center", fontSize: 11.5, color: C.inkSoft }}>
-          New member? <span style={{ color: C.garnet, fontWeight: 700 }}>Contact your section leader</span>
-        </div>
+        <button
+          onClick={() => { setMode(mode === "signin" ? "register" : "signin"); setError(""); }}
+          className="dvbc-tap"
+          style={{ width: "100%", textAlign: "center", fontSize: 11.5, color: C.inkSoft, background: "none", border: "none", cursor: "pointer" }}
+        >
+          {mode === "signin"
+            ? <>New member? <span style={{ color: C.garnet, fontWeight: 700 }}>Register here</span></>
+            : <>Already registered? <span style={{ color: C.garnet, fontWeight: 700 }}>Sign in</span></>}
+        </button>
       </div>
     </div>
   );
@@ -248,14 +300,14 @@ function TopHeader({ title, subtitle }) {
   );
 }
 
-function Dashboard({ user, members, onNav }) {
+function Dashboard({ profile, members, onNav }) {
   const total = members.length;
   const present = members.filter((m) => m.status === "present").length;
   const pct = total ? Math.round((present / total) * 100) : 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
-  const firstName = (user || "Member").split("@")[0].split(/[.\s]/)[0];
-  const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+  const displayName = profile?.name ? profile.name.split(" ")[0] : "Member";
+
   const now = new Date();
   let daysUntilRehearsal = (7 - now.getDay()) % 7;
   if (daysUntilRehearsal === 0) {
@@ -300,10 +352,10 @@ function Dashboard({ user, members, onNav }) {
           </div>
           <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Rehearsal</div>
           <div style={{ fontFamily: "Lora, serif", fontSize: 20, marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <Clock size={16} /> Sunday, 2:30 PM
+            <Clock size={16} /> Sunday, 7:30 PM
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-            <MapPin size={13} /> St. Peter’s Anglican Church Auditorium. Full Chorale
+            <MapPin size={13} /> St. Peter's Anglican Church, Ikenegbu, Owerri
           </div>
         </div>
 
@@ -333,21 +385,10 @@ function Dashboard({ user, members, onNav }) {
   );
 }
 
-function Attendance({ members, setMembers }) {
+function Attendance({ members, loading, onCycle }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
-
-  const cycle = (id) => {
-    setMembers((prev) =>
-      prev.map((m) => {
-        if (m.id !== id) return m;
-        const order = ["present", "absent", "excused"];
-        const next = order[(order.indexOf(m.status) + 1) % order.length];
-        return { ...m, status: next };
-      })
-    );
-  };
 
   const present = members.filter((m) => m.status === "present").length;
   const absent = members.filter((m) => m.status === "absent").length;
@@ -361,7 +402,7 @@ function Attendance({ members, setMembers }) {
 
   return (
     <div style={{ paddingBottom: 110 }}>
-      <TopHeader title="Attendance" subtitle="Sunday Rehearsal · Tap a member to change status" />
+      <TopHeader title="Attendance" subtitle="Shared live sheet · Tap a member to change status" />
 
       <div style={{ display: "flex", gap: 10, padding: "16px 24px 0" }}>
         <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
@@ -393,12 +434,15 @@ function Attendance({ members, setMembers }) {
       </div>
 
       <div style={{ padding: "6px 24px 0" }}>
-        {filtered.length === 0 && (
+        {loading && (
+          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading members…</div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No members match.</div>
         )}
         {filtered.map((m) => (
           <button
-            key={m.id} onClick={() => cycle(m.id)} className="dvbc-row"
+            key={m.id} onClick={() => onCycle(m)} className="dvbc-row"
             style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
           >
             <div style={{
@@ -417,7 +461,7 @@ function Attendance({ members, setMembers }) {
         ))}
       </div>
       <div style={{ textAlign: "center", fontSize: 10.5, color: C.inkSoft, opacity: 0.7, padding: "14px 0 0" }}>
-        Saved on this device
+        Shared with every chorister, live
       </div>
     </div>
   );
@@ -483,10 +527,9 @@ function Library({ favorites, toggleFavorite }) {
   );
 }
 
-function Profile({ user, members, onLogout }) {
+function Profile({ profile, members, onLogout }) {
   const present = members.filter((m) => m.status === "present").length;
-  const firstName = (user || "Member").split("@")[0].split(/[.\s]/)[0];
-  const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+  const displayName = profile?.name || "Member";
 
   return (
     <div style={{ paddingBottom: 110 }}>
@@ -502,18 +545,18 @@ function Profile({ user, members, onLogout }) {
           </div>
         </div>
         <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 20 }}>{displayName}</div>
-        <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>{user}</div>
+        <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>{profile?.part || ""}</div>
       </div>
 
       <div style={{ padding: "20px 24px" }}>
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{present}</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Rehearsals this term</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{members.length}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Registered members</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>Alto II</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Voice part</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{present}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present today</div>
           </div>
         </div>
 
@@ -577,34 +620,82 @@ function BottomNav({ screen, onNav }) {
 
 /* ---------- Root app ---------- */
 export default function App() {
-  const [screen, setScreen] = useState("login");
-  const [user, setUser] = useState(null);
-  const [members, setMembers] = useState(() => store.get("dvbc-attendance", seedMembers));
+  const [screen, setScreen] = useState("dashboard");
+  const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
+  const [profile, setProfile] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
   const [favorites, setFavorites] = useState(() => store.get("dvbc-favorites", []));
 
-  useEffect(() => { store.set("dvbc-attendance", members); }, [members]);
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
 
+  // Track auth session
   useEffect(() => {
-    const savedUser = store.get("dvbc-user", null);
-    if (savedUser) { setUser(savedUser); setScreen("dashboard"); }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (!newSession) setScreen("dashboard");
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Load this user's own member profile once signed in
+  useEffect(() => {
+    if (!session) { setProfile(null); return; }
+    supabase
+      .from("members")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .single()
+      .then(({ data }) => setProfile(data || null));
+  }, [session]);
+
+  // Load + live-subscribe to the shared members list
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    setLoadingMembers(true);
+    supabase.from("members").select("*").order("name").then(({ data }) => {
+      if (active) { setMembers(data || []); setLoadingMembers(false); }
+    });
+
+    const channel = supabase
+      .channel("members-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "members" }, (payload) => {
+        setMembers((prev) => {
+          if (payload.eventType === "INSERT") return [...prev, payload.new].sort((a, b) => a.name.localeCompare(b.name));
+          if (payload.eventType === "UPDATE") return prev.map((m) => (m.id === payload.new.id ? payload.new : m));
+          if (payload.eventType === "DELETE") return prev.filter((m) => m.id !== payload.old.id);
+          return prev;
+        });
+      })
+      .subscribe();
+
+    return () => { active = false; supabase.removeChannel(channel); };
+  }, [session]);
 
   const toggleFavorite = useCallback((id) => {
     setFavorites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }, []);
 
-  const handleLogin = (email) => {
-    setUser(email);
-    store.set("dvbc-user", email);
-    setScreen("dashboard");
+  const cycleStatus = useCallback(async (member) => {
+    const order = ["present", "absent", "excused"];
+    const next = order[(order.indexOf(member.status) + 1) % order.length];
+    setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, status: next } : m)));
+    await supabase.from("members").update({ status: next }).eq("id", member.id);
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    store.set("dvbc-user", null);
-    setScreen("login");
-  };
+  if (session === undefined) {
+    return (
+      <div style={{ minHeight: "100dvh", background: C.parchment, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: C.inkSoft, fontFamily: "Poppins, sans-serif", fontSize: 13 }}>Loading…</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100dvh", background: C.parchment, fontFamily: "Poppins, sans-serif", position: "relative" }}>
@@ -619,12 +710,12 @@ export default function App() {
         .dvbc-row:active { background: rgba(122,31,61,0.05); }
       `}</style>
 
-      {screen === "login" && <LoginScreen onLogin={handleLogin} />}
-      {screen === "dashboard" && <Dashboard user={user} members={members} onNav={setScreen} />}
-      {screen === "attendance" && <Attendance members={members} setMembers={setMembers} />}
-      {screen === "library" && <Library favorites={favorites} toggleFavorite={toggleFavorite} />}
-      {screen === "profile" && <Profile user={user} members={members} onLogout={handleLogout} />}
-      {screen !== "login" && <BottomNav screen={screen} onNav={setScreen} />}
+      {!session && <LoginScreen onAuthed={() => setScreen("dashboard")} />}
+      {session && screen === "dashboard" && <Dashboard profile={profile} members={members} onNav={setScreen} />}
+      {session && screen === "attendance" && <Attendance members={members} loading={loadingMembers} onCycle={cycleStatus} />}
+      {session && screen === "library" && <Library favorites={favorites} toggleFavorite={toggleFavorite} />}
+      {session && screen === "profile" && <Profile profile={profile} members={members} onLogout={handleLogout} />}
+      {session && <BottomNav screen={screen} onNav={setScreen} />}
     </div>
   );
-        }
+}
