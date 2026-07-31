@@ -671,10 +671,10 @@ function Library({ favorites, toggleFavorite }) {
   );
 }
 
-function Profile({ profile, members, onLogout, isAdmin, onApprove, onUploadAvatar, avatarUploading, avatarError }) {
+function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onUploadAvatar, avatarUploading, avatarError }) {
   const present = members.filter((m) => m.status === "present").length;
   const displayName = profile?.name || "Member";
-  const pending = members.filter((m) => !m.approved);
+  const pending = members.filter((m) => m.approval_status === "pending");
 
   return (
     <div style={{ paddingBottom: 110 }}>
@@ -759,12 +759,20 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onUploadAvata
                   <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{m.name}</div>
                   <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 1 }}>{m.part}</div>
                 </div>
-                <button
-                  onClick={() => onApprove(m.id)} className="dvbc-tap"
-                  style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "9px 16px", borderRadius: 10, border: "none", cursor: "pointer", flexShrink: 0 }}
-                >
-                  Approve
-                </button>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => onApprove(m.id)} className="dvbc-tap"
+                    style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "9px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => onReject(m.id)} className="dvbc-tap"
+                    style={{ background: C.roseBg, color: C.roseDeep, fontWeight: 700, fontSize: 12, padding: "9px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+                  >
+                    Reject
+                  </button>
+                </div>
               </div>
             ))}
           </>
@@ -907,10 +915,18 @@ export default function App() {
   }, []);
 
   const approveMember = useCallback(async (memberId) => {
-    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: true } : m)));
-    const { error } = await supabase.from("members").update({ approved: true }).eq("id", memberId);
+    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: true, approval_status: "approved" } : m)));
+    const { error } = await supabase.from("members").update({ approved: true, approval_status: "approved" }).eq("id", memberId);
     if (error) {
-      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: false } : m)));
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: false, approval_status: "pending" } : m)));
+    }
+  }, []);
+
+  const rejectMember = useCallback(async (memberId) => {
+    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approval_status: "rejected" } : m)));
+    const { error } = await supabase.from("members").update({ approval_status: "rejected" }).eq("id", memberId);
+    if (error) {
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approval_status: "pending" } : m)));
     }
   }, []);
 
@@ -996,7 +1012,7 @@ export default function App() {
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "profile" && (
         <Profile
-          profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember}
+          profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember} onReject={rejectMember}
           onUploadAvatar={uploadAvatar} avatarUploading={avatarUploading} avatarError={avatarError}
         />
       )}
