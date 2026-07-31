@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus } from "lucide-react";
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -560,11 +560,13 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
           const row = (
             <>
               <div style={{
-                width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
                 background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
                 fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
               }}>
-                {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                {m.avatar_url
+                  ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
@@ -665,7 +667,7 @@ function Library({ favorites, toggleFavorite }) {
   );
 }
 
-function Profile({ profile, members, onLogout, isAdmin, onApprove }) {
+function Profile({ profile, members, onLogout, isAdmin, onApprove, onUploadAvatar, avatarUploading, avatarError }) {
   const present = members.filter((m) => m.status === "present").length;
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => !m.approved);
@@ -674,15 +676,35 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove }) {
     <div style={{ paddingBottom: 110 }}>
       <div style={{ background: GRADIENT, padding: "calc(env(safe-area-inset-top, 0px) + 26px) 24px 34px", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: "50%", background: "#fff", margin: "0 auto 12px",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "Lora, serif", fontStyle: "italic", fontWeight: 600, fontSize: 24, color: C.garnet,
-            border: `3px solid ${C.lilac}`,
-          }}>
-            {displayName.charAt(0)}
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <div style={{
+              width: 72, height: 72, borderRadius: "50%", background: "#fff", margin: "0 auto 12px",
+              display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+              fontFamily: "Lora, serif", fontStyle: "italic", fontWeight: 600, fontSize: 24, color: C.garnet,
+              border: `3px solid ${C.lilac}`,
+            }}>
+              {profile?.avatar_url
+                ? <img src={profile.avatar_url} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : displayName.charAt(0)}
+            </div>
+            <label
+              htmlFor="dvbc-avatar-input" className="dvbc-tap"
+              style={{
+                position: "absolute", bottom: 10, right: -2, width: 28, height: 28, borderRadius: "50%",
+                background: C.garnet, border: "2.5px solid #fff", display: "flex", alignItems: "center",
+                justifyContent: "center", cursor: "pointer",
+              }}
+            >
+              <Camera size={13} color="#fff" />
+            </label>
+            <input
+              id="dvbc-avatar-input" type="file" accept="image/*" style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadAvatar(f); e.target.value = ""; }}
+            />
           </div>
         </div>
+        {avatarUploading && <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: -6, marginBottom: 6 }}>Uploading photo…</div>}
+        {avatarError && <div style={{ color: "#FBEAEF", fontSize: 11, marginTop: -6, marginBottom: 6 }}>{avatarError}</div>}
         <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 20 }}>{displayName}</div>
         <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>
           {profile?.part || ""}{profile?.is_admin ? " · Admin" : ""}
@@ -804,6 +826,8 @@ export default function App() {
   const [favorites, setFavorites] = useState(() => store.get("dvbc-favorites", []));
   const [clockingIn, setClockingIn] = useState(false);
   const [clockInError, setClockInError] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
 
@@ -886,6 +910,35 @@ export default function App() {
     }
   }, []);
 
+  const uploadAvatar = useCallback(async (file) => {
+    if (!session) return;
+    setAvatarError("");
+    setAvatarUploading(true);
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `${session.user.id}/avatar.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true, cacheControl: "3600" });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+
+      const { error: updateError } = await supabase
+        .from("members")
+        .update({ avatar_url: publicUrl })
+        .eq("user_id", session.user.id);
+      if (updateError) throw updateError;
+
+      setProfile((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
+    } catch (err) {
+      setAvatarError(err.message || "Could not upload photo. Please try again.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }, [session]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -928,7 +981,10 @@ export default function App() {
         <Library favorites={favorites} toggleFavorite={toggleFavorite} />
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "profile" && (
-        <Profile profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember} />
+        <Profile
+          profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember}
+          onUploadAvatar={uploadAvatar} avatarUploading={avatarUploading} avatarError={avatarError}
+        />
       )}
       {session && profile && (profile.approved || isAdmin) && <BottomNav screen={screen} onNav={setScreen} />}
     </div>
