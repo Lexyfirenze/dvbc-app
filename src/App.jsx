@@ -385,7 +385,7 @@ function Dashboard({ profile, members, onNav }) {
   );
 }
 
-function Attendance({ members, loading, onCycle }) {
+function Attendance({ members, loading, onCycle, isAdmin }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
@@ -402,7 +402,10 @@ function Attendance({ members, loading, onCycle }) {
 
   return (
     <div style={{ paddingBottom: 110 }}>
-      <TopHeader title="Attendance" subtitle="Shared live sheet · Tap a member to change status" />
+      <TopHeader
+        title="Attendance"
+        subtitle={isAdmin ? "Shared live sheet · Tap a member to change status" : "Shared live sheet · Updated by section leaders"}
+      />
 
       <div style={{ display: "flex", gap: 10, padding: "16px 24px 0" }}>
         <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
@@ -440,28 +443,47 @@ function Attendance({ members, loading, onCycle }) {
         {!loading && filtered.length === 0 && (
           <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No members match.</div>
         )}
-        {filtered.map((m) => (
-          <button
-            key={m.id} onClick={() => onCycle(m)} className="dvbc-row"
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
-          >
-            <div style={{
-              width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-              background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
-            }}>
-              {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+        {filtered.map((m) => {
+          const row = (
+            <>
+              <div style={{
+                width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+              }}>
+                {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
+                <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
+              </div>
+              <Pill tone={m.status}>{m.status}</Pill>
+            </>
+          );
+
+          if (isAdmin) {
+            return (
+              <button
+                key={m.id} onClick={() => onCycle(m)} className="dvbc-row"
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
+              >
+                {row}
+              </button>
+            );
+          }
+
+          return (
+            <div
+              key={m.id}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}
+            >
+              {row}
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
-              <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
-            </div>
-            <Pill tone={m.status}>{m.status}</Pill>
-          </button>
-        ))}
+          );
+        })}
       </div>
       <div style={{ textAlign: "center", fontSize: 10.5, color: C.inkSoft, opacity: 0.7, padding: "14px 0 0" }}>
-        Shared with every chorister, live
+        {isAdmin ? "Shared with every chorister, live" : "Only section leaders can update attendance"}
       </div>
     </div>
   );
@@ -545,7 +567,9 @@ function Profile({ profile, members, onLogout }) {
           </div>
         </div>
         <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 20 }}>{displayName}</div>
-        <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>{profile?.part || ""}</div>
+        <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>
+          {profile?.part || ""}{profile?.is_admin ? " · Admin" : ""}
+        </div>
       </div>
 
       <div style={{ padding: "20px 24px" }}>
@@ -678,12 +702,19 @@ export default function App() {
     setFavorites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }, []);
 
+  const isAdmin = !!profile?.is_admin;
+
   const cycleStatus = useCallback(async (member) => {
+    if (!isAdmin) return; // guard: only admins may change status
     const order = ["present", "absent", "excused"];
     const next = order[(order.indexOf(member.status) + 1) % order.length];
     setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, status: next } : m)));
-    await supabase.from("members").update({ status: next }).eq("id", member.id);
-  }, []);
+    const { error } = await supabase.from("members").update({ status: next }).eq("id", member.id);
+    if (error) {
+      // revert on failure (e.g. RLS/trigger rejected it)
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, status: member.status } : m)));
+    }
+  }, [isAdmin]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -712,7 +743,9 @@ export default function App() {
 
       {!session && <LoginScreen onAuthed={() => setScreen("dashboard")} />}
       {session && screen === "dashboard" && <Dashboard profile={profile} members={members} onNav={setScreen} />}
-      {session && screen === "attendance" && <Attendance members={members} loading={loadingMembers} onCycle={cycleStatus} />}
+      {session && screen === "attendance" && (
+        <Attendance members={members} loading={loadingMembers} onCycle={cycleStatus} isAdmin={isAdmin} />
+      )}
       {session && screen === "library" && <Library favorites={favorites} toggleFavorite={toggleFavorite} />}
       {session && screen === "profile" && <Profile profile={profile} members={members} onLogout={handleLogout} />}
       {session && <BottomNav screen={screen} onNav={setScreen} />}
