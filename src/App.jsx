@@ -256,6 +256,17 @@ function Dashboard({ user, members, onNav }) {
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
   const firstName = (user || "Member").split("@")[0].split(/[.\s]/)[0];
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+  const now = new Date();
+  let daysUntilRehearsal = (7 - now.getDay()) % 7;
+  if (daysUntilRehearsal === 0) {
+    const rehearsalTime = new Date(now);
+    rehearsalTime.setHours(19, 30, 0, 0);
+    if (now > rehearsalTime) daysUntilRehearsal = 7;
+  }
+  const rehearsalLabel =
+    daysUntilRehearsal === 0 ? "Today" :
+    daysUntilRehearsal === 1 ? "Tomorrow" :
+    `in ${daysUntilRehearsal} days`;
 
   return (
     <div style={{ paddingBottom: 110 }}>
