@@ -285,11 +285,11 @@ function Dashboard({ user, members, onNav }) {
 
         <div style={{ background: GRADIENT, borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative" }}>
           <div style={{ position: "absolute", top: 18, right: 18, background: "rgba(255,255,255,0.16)", fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 999 }}>
-            in 2 days
+            {rehearsalLabel}
           </div>
           <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Rehearsal</div>
           <div style={{ fontFamily: "Lora, serif", fontSize: 20, marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <Clock size={16} /> Thursday, 7:30 PM
+            <Clock size={16} /> Sunday, 2:30 PM
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
             <MapPin size={13} /> St. Peter’s Anglican Church Auditorium. Full Chorale
