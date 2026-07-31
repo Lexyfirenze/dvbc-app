@@ -292,7 +292,7 @@ function Dashboard({ user, members, onNav }) {
             <Clock size={16} /> Thursday, 7:30 PM
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-            <MapPin size={13} /> St. Augustine Hall · Full Chorale
+            <MapPin size={13} /> St. Peter’s Anglican Church Auditorium. Full Chorale
           </div>
         </div>
 
