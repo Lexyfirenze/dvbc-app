@@ -28,6 +28,25 @@ const C = {
 const GRADIENT = `linear-gradient(135deg, ${C.garnet} 0%, ${C.plum} 62%, #8C5FA0 100%)`;
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 
+/* ---------- Clock-in window: Sundays 2:00 PM - 3:30 PM, Africa/Lagos time (UTC+1, no DST) ---------- */
+function isClockInWindowOpen() {
+  const now = new Date();
+  const watMillis = now.getTime() + now.getTimezoneOffset() * 60000 + 60 * 60000;
+  const wat = new Date(watMillis);
+  const day = wat.getDay(); // 0 = Sunday
+  const totalMinutes = wat.getHours() * 60 + wat.getMinutes();
+  return day === 0 && totalMinutes >= 14 * 60 && totalMinutes <= 15 * 60 + 30;
+}
+
+function formatClockTime(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" });
+  } catch (e) {
+    return null;
+  }
+}
+
 /* ---------- Local persistence (favorites only — this device) ---------- */
 const store = {
   get(key, fallback) {
@@ -385,10 +404,19 @@ function Dashboard({ profile, members, onNav }) {
   );
 }
 
-function Attendance({ members, loading, onCycle, isAdmin }) {
+function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, clockingIn, clockInError }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
+  const [windowOpen, setWindowOpen] = useState(isClockInWindowOpen());
+
+  useEffect(() => {
+    const id = setInterval(() => setWindowOpen(isClockInWindowOpen()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const myMember = members.find((m) => m.user_id === profile?.user_id);
+  const alreadyClockedIn = !!myMember?.clocked_in_at && myMember?.status === "present";
 
   const present = members.filter((m) => m.status === "present").length;
   const absent = members.filter((m) => m.status === "absent").length;
@@ -406,6 +434,46 @@ function Attendance({ members, loading, onCycle, isAdmin }) {
         title="Attendance"
         subtitle={isAdmin ? "Shared live sheet · Tap a member to change status" : "Shared live sheet · Updated by section leaders"}
       />
+
+      {!isAdmin && (
+        <div style={{ margin: "18px 24px 0", background: alreadyClockedIn ? C.sageBg : C.card, border: `1.4px solid ${alreadyClockedIn ? C.sage : C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+          {alreadyClockedIn ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <CheckSquare size={17} color={C.sage} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.sage }}>You're clocked in</div>
+                <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 2 }}>Arrived at {formatClockTime(myMember.clocked_in_at)}</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Rehearsal Clock-In</div>
+              <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>
+                {windowOpen
+                  ? "Tap below to mark your arrival for today's rehearsal."
+                  : "Opens Sundays 2:00 PM – 3:30 PM, around rehearsal time."}
+              </div>
+              {clockInError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 10 }}>
+                  <AlertCircle size={13} /> {clockInError}
+                </div>
+              )}
+              <button
+                onClick={onClockIn} disabled={!windowOpen || clockingIn} className="dvbc-tap"
+                style={{
+                  width: "100%", background: windowOpen ? GRADIENT : C.lilacSoft, color: windowOpen ? "#fff" : "#B8ADC0",
+                  fontWeight: 700, fontSize: 13.5, padding: 13, borderRadius: 12, border: "none",
+                  cursor: windowOpen && !clockingIn ? "pointer" : "default",
+                }}
+              >
+                {clockingIn ? "Clocking in…" : "Clock In"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 10, padding: "16px 24px 0" }}>
         <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
@@ -456,6 +524,9 @@ function Attendance({ members, loading, onCycle, isAdmin }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
                 <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
+                {m.clocked_in_at && (
+                  <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Clocked in {formatClockTime(m.clocked_in_at)}</div>
+                )}
               </div>
               <Pill tone={m.status}>{m.status}</Pill>
             </>
@@ -650,6 +721,8 @@ export default function App() {
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [favorites, setFavorites] = useState(() => store.get("dvbc-favorites", []));
+  const [clockingIn, setClockingIn] = useState(false);
+  const [clockInError, setClockInError] = useState("");
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
 
@@ -716,6 +789,14 @@ export default function App() {
     }
   }, [isAdmin]);
 
+  const handleClockIn = useCallback(async () => {
+    setClockInError("");
+    setClockingIn(true);
+    const { error } = await supabase.rpc("clock_in");
+    if (error) setClockInError(error.message || "Could not clock in. Please try again.");
+    setClockingIn(false);
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -744,7 +825,10 @@ export default function App() {
       {!session && <LoginScreen onAuthed={() => setScreen("dashboard")} />}
       {session && screen === "dashboard" && <Dashboard profile={profile} members={members} onNav={setScreen} />}
       {session && screen === "attendance" && (
-        <Attendance members={members} loading={loadingMembers} onCycle={cycleStatus} isAdmin={isAdmin} />
+        <Attendance
+          members={members} loading={loadingMembers} onCycle={cycleStatus} isAdmin={isAdmin}
+          profile={profile} onClockIn={handleClockIn} clockingIn={clockingIn} clockInError={clockInError}
+        />
       )}
       {session && screen === "library" && <Library favorites={favorites} toggleFavorite={toggleFavorite} />}
       {session && screen === "profile" && <Profile profile={profile} members={members} onLogout={handleLogout} />}
