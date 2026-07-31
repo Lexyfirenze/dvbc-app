@@ -309,6 +309,51 @@ function LoginScreen({ onAuthed }) {
   );
 }
 
+function PendingApproval({ profile, onLogout }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <div style={{ background: GRADIENT, padding: "calc(env(safe-area-inset-top, 0px) + 40px) 32px 30px", textAlign: "center", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{
+            width: 84, height: 84, borderRadius: "50%", background: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)", overflow: "hidden",
+          }}>
+            <img src={logoImg} alt="logo" style={{ width: "88%", height: "88%", objectFit: "contain" }} />
+          </div>
+        </div>
+        <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 24, fontWeight: 600 }}>
+          De Voci Belli <span style={{ fontStyle: "italic", color: C.lilac }}>Chorale</span>
+        </div>
+        <div style={{ color: C.lilac, fontSize: 11, letterSpacing: 4, fontWeight: 700, marginTop: 3 }}>NIGERIA</div>
+      </div>
+
+      <div style={{ flex: 1, background: C.parchment, borderRadius: "26px 26px 0 0", marginTop: -18, padding: "40px 26px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.amberBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+          <Clock size={26} color={C.amberText} />
+        </div>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.ink, marginBottom: 8 }}>
+          Awaiting Approval
+        </div>
+        <div style={{ fontSize: 13, color: C.inkSoft, lineHeight: 1.6, maxWidth: 280 }}>
+          Hi {profile?.name ? profile.name.split(" ")[0] : "there"}! Your registration has been received.
+          A section leader needs to approve your account before you can access the members portal.
+        </div>
+        <button
+          onClick={onLogout} className="dvbc-tap"
+          style={{
+            marginTop: 32, background: C.roseBg, color: C.roseDeep, fontWeight: 700, fontSize: 13.5,
+            padding: "13px 28px", borderRadius: 14, border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 8,
+          }}
+        >
+          <LogOut size={15} /> Sign Out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TopHeader({ title, subtitle }) {
   return (
     <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0" }}>
@@ -620,9 +665,10 @@ function Library({ favorites, toggleFavorite }) {
   );
 }
 
-function Profile({ profile, members, onLogout }) {
+function Profile({ profile, members, onLogout, isAdmin, onApprove }) {
   const present = members.filter((m) => m.status === "present").length;
   const displayName = profile?.name || "Member";
+  const pending = members.filter((m) => !m.approved);
 
   return (
     <div style={{ paddingBottom: 110 }}>
@@ -662,6 +708,41 @@ function Profile({ profile, members, onLogout }) {
             <ChevronLeft size={16} color={C.inkSoft} style={{ transform: "rotate(180deg)" }} />
           </div>
         ))}
+
+        {isAdmin && (
+          <>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
+              Pending Approvals
+              {pending.length > 0 && (
+                <span style={{ background: C.roseBg, color: C.roseDeep, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999 }}>{pending.length}</span>
+              )}
+            </div>
+            {pending.length === 0 && (
+              <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "6px 0 4px" }}>No members waiting for approval.</div>
+            )}
+            {pending.map((m) => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+                  background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
+                }}>
+                  {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{m.name}</div>
+                  <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 1 }}>{m.part}</div>
+                </div>
+                <button
+                  onClick={() => onApprove(m.id)} className="dvbc-tap"
+                  style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "9px 16px", borderRadius: 10, border: "none", cursor: "pointer", flexShrink: 0 }}
+                >
+                  Approve
+                </button>
+              </div>
+            ))}
+          </>
+        )}
 
         <button
           onClick={onLogout} className="dvbc-tap"
@@ -797,6 +878,14 @@ export default function App() {
     setClockingIn(false);
   }, []);
 
+  const approveMember = useCallback(async (memberId) => {
+    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: true } : m)));
+    const { error } = await supabase.from("members").update({ approved: true }).eq("id", memberId);
+    if (error) {
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: false } : m)));
+    }
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -823,16 +912,25 @@ export default function App() {
       `}</style>
 
       {!session && <LoginScreen onAuthed={() => setScreen("dashboard")} />}
-      {session && screen === "dashboard" && <Dashboard profile={profile} members={members} onNav={setScreen} />}
-      {session && screen === "attendance" && (
+      {session && profile && !profile.approved && !isAdmin && (
+        <PendingApproval profile={profile} onLogout={handleLogout} />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "dashboard" && (
+        <Dashboard profile={profile} members={members} onNav={setScreen} />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "attendance" && (
         <Attendance
           members={members} loading={loadingMembers} onCycle={cycleStatus} isAdmin={isAdmin}
           profile={profile} onClockIn={handleClockIn} clockingIn={clockingIn} clockInError={clockInError}
         />
       )}
-      {session && screen === "library" && <Library favorites={favorites} toggleFavorite={toggleFavorite} />}
-      {session && screen === "profile" && <Profile profile={profile} members={members} onLogout={handleLogout} />}
-      {session && <BottomNav screen={screen} onNav={setScreen} />}
+      {session && profile && (profile.approved || isAdmin) && screen === "library" && (
+        <Library favorites={favorites} toggleFavorite={toggleFavorite} />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "profile" && (
+        <Profile profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember} />
+      )}
+      {session && profile && (profile.approved || isAdmin) && <BottomNav screen={screen} onNav={setScreen} />}
     </div>
   );
 }
