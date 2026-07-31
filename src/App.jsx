@@ -5,27 +5,27 @@ import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
 
-/* ---------- Design tokens: red / purple / lilac interface ---------- */
+/* ---------- Design tokens: indigo / violet / lavender interface ---------- */
 const C = {
-  garnet: "#7A1F3D",
-  garnetDark: "#3E1020",
-  plum: "#5B2A6B",
-  lilac: "#C9AED8",
-  lilacSoft: "#F3ECF6",
-  lilacLine: "#E4D3EC",
-  ink: "#251A2C",
-  inkSoft: "#726A79",
+  garnet: "#4C2E9E",
+  garnetDark: "#241246",
+  plum: "#7A56D6",
+  lilac: "#C6B8F0",
+  lilacSoft: "#F1EDFC",
+  lilacLine: "#E3DAF7",
+  ink: "#231A3B",
+  inkSoft: "#736C87",
   card: "#FFFFFF",
-  parchment: "#FBF8FC",
+  parchment: "#F7F5FD",
   sage: "#4F7A5C",
   sageBg: "#E7F1E9",
-  roseDeep: "#9C3B55",
-  roseBg: "#FBEAEF",
+  roseDeep: "#B23368",
+  roseBg: "#FBEAF1",
   amberBg: "#F6EFD8",
   amberText: "#8A6C24",
 };
 
-const GRADIENT = `linear-gradient(135deg, ${C.garnet} 0%, ${C.plum} 62%, #8C5FA0 100%)`;
+const GRADIENT = `linear-gradient(135deg, ${C.garnetDark} 0%, ${C.garnet} 45%, ${C.plum} 100%)`;
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 
 const PRIVACY_POLICY_TEXT = `Effective Date: July 31, 2026
@@ -176,7 +176,7 @@ function Badge() {
   return (
     <div style={{
       width: 56, height: 56, borderRadius: "50%", overflow: "hidden",
-      border: `2px solid ${C.lilac}`, boxShadow: "0 4px 14px rgba(90,30,60,0.25)",
+      border: `2px solid ${C.lilac}`, boxShadow: "0 4px 14px rgba(76,46,158,0.22)",
       flexShrink: 0, background: "#fff",
     }}>
       <img src={logoImg} alt="De Voci Belli Chorale" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -491,9 +491,9 @@ function Dashboard({ profile, members, onNav }) {
       <div style={{ padding: "14px 24px 0" }}><Staff /></div>
 
       <div style={{ padding: "18px 24px" }}>
-        <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", boxShadow: "0 10px 26px rgba(90,30,60,0.18)" }}>
+        <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", boxShadow: "0 10px 26px rgba(76,46,158,0.18)" }}>
           <img src={photoImg} alt="De Voci Belli Chorale members" style={{ width: "100%", height: 190, objectFit: "cover", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(62,16,32,0.88) 0%, rgba(62,16,32,0.15) 55%, rgba(62,16,32,0) 100%)" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(36,18,70,0.88) 0%, rgba(36,18,70,0.15) 55%, rgba(36,18,70,0) 100%)" }} />
           <div style={{ position: "absolute", left: 18, right: 18, bottom: 16, color: "#fff" }}>
             <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Our Chorale</div>
             <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 3 }}>Beautiful voices, one family</div>
@@ -1091,7 +1091,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
           </div>
         </div>
         {avatarUploading && <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: -6, marginBottom: 6 }}>Uploading photo…</div>}
-        {avatarError && <div style={{ color: "#FBEAEF", fontSize: 11, marginTop: -6, marginBottom: 6 }}>{avatarError}</div>}
+        {avatarError && <div style={{ color: "#FBEAF1", fontSize: 11, marginTop: -6, marginBottom: 6 }}>{avatarError}</div>}
         <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 20 }}>{displayName}</div>
         <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>
           {profile?.part || ""}{profile?.is_admin ? " · Admin" : ""}
@@ -1384,7 +1384,7 @@ export default function App() {
         button { user-select: none; }
         .dvbc-tap { transition: transform .12s ease, opacity .12s ease, background .15s ease; }
         .dvbc-tap:active { transform: scale(0.96); opacity: 0.88; }
-        .dvbc-row:active { background: rgba(122,31,61,0.05); }
+        .dvbc-row:active { background: rgba(76,46,158,0.06); }
       `}</style>
 
       {!session && <LoginScreen onAuthed={() => setScreen("dashboard")} />}
