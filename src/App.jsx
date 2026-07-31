@@ -28,6 +28,92 @@ const C = {
 const GRADIENT = `linear-gradient(135deg, ${C.garnet} 0%, ${C.plum} 62%, #8C5FA0 100%)`;
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 
+const PRIVACY_POLICY_TEXT = `Effective Date: July 31, 2026
+
+At De Voci Belli Chorale, we value your privacy and are committed to protecting the personal information you provide when using our application. This Privacy Policy explains how we collect, use, store, and safeguard your information.
+
+1. Information We Collect
+
+We may collect the following information:
+
+- Full name
+- Email address
+- Phone number
+- Date of birth
+- Residential address
+- Profile photograph (where applicable)
+- Educational or professional information (if required)
+- Device information, such as IP address, browser type, and operating system
+- Information about how you use the application
+
+2. How We Use Your Information
+
+We use your information to:
+
+- Create and manage your account.
+- Process applications and registrations.
+- Communicate important updates and announcements.
+- Respond to inquiries and provide support.
+- Improve the performance and functionality of the application.
+- Maintain the security and integrity of our services.
+- Comply with legal obligations where applicable.
+
+3. Data Sharing
+
+We do not sell, rent, or trade your personal information. Your information may be shared only:
+
+- With trusted service providers who help operate the application.
+- When required by law or a valid legal process.
+- To protect the rights, safety, or property of De Voci Belli Chorale or its users.
+
+4. Data Security
+
+We implement appropriate technical and organizational measures to protect your personal information from unauthorized access, alteration, disclosure, or destruction. While we strive to use commercially acceptable means to protect your information, no internet-based service can guarantee absolute security.
+
+5. Data Retention
+
+We retain your information only for as long as necessary to provide our services, fulfill legal obligations, resolve disputes, and enforce our policies. When your information is no longer required, it will be securely deleted or anonymized.
+
+6. Your Rights
+
+Depending on applicable laws, you may have the right to:
+
+- Access your personal information.
+- Request correction of inaccurate information.
+- Request deletion of your personal data.
+- Withdraw consent where applicable.
+- Contact us regarding any concerns about your privacy.
+
+7. Children's Privacy
+
+Our application is not intended for children under the age required by applicable law without parental or guardian consent. We do not knowingly collect personal information from children without appropriate authorization.
+
+8. Third-Party Services
+
+Our application may use trusted third-party services for hosting, authentication, analytics, notifications, or payment processing. These providers have their own privacy policies governing how they handle your information.
+
+9. Changes to This Privacy Policy
+
+We may update this Privacy Policy from time to time. Any changes will be posted within the application with an updated effective date. Continued use of the application after such updates constitutes acceptance of the revised policy.
+
+10. Contact Us
+
+If you have any questions or concerns regarding this Privacy Policy or the handling of your personal information, please contact us through the official communication channels provided by De Voci Belli Chorale.
+
+By using this application, you acknowledge that you have read, understood, and agreed to this Privacy Policy.`;
+
+const ABOUT_TEXT = `De Voci Belli Chorale is a vibrant community of passionate young musicians united by a shared commitment to showcasing the beauty, power, and excellence of choral music. Founded on the belief that music is a universal language capable of inspiring hearts and transforming lives, the chorale serves as a platform where talent is nurtured, creativity flourishes, and lasting friendships are built.
+
+Our repertoire spans classical, sacred, gospel, African art music, folk, and contemporary choral works, reflecting both our rich cultural heritage and the timeless traditions of choral excellence. Every performance is approached with artistic integrity, disciplined musicianship, and a deep desire to create meaningful musical experiences for our audiences.
+
+Beyond the stage, De Voci Belli Chorale is committed to developing young singers through musical education, vocal training, mentorship, and collaborative learning. We believe that every rehearsal is an opportunity for growth, every concert is an opportunity to inspire, and every voice contributes to a greater harmony.
+
+As ambassadors of choral music, we strive to promote excellence, preserve musical heritage, foster unity through song, and positively impact our communities. Through our music, we seek not only to entertain but also to uplift, educate, and leave a lasting impression wherever our voices are heard.
+
+Our Vision: To be a leading choral ensemble recognized for artistic excellence, innovation, and meaningful musical impact.
+
+Our Mission: To inspire lives and celebrate the beauty of music through exceptional choral performances, continuous musical development, and service to our community.`;
+
 /* ---------- Avatar upload constraints (match the `avatars` storage bucket config) ---------- */
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024; // 8MB
@@ -951,7 +1037,24 @@ function Executives({ isAdmin }) {
   );
 }
 
-function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onUploadAvatar, avatarUploading, avatarError }) {
+function StaticPage({ title, content, onBack }) {
+  return (
+    <div style={{ paddingBottom: 110 }}>
+      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={onBack} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+          <ChevronLeft size={20} color={C.ink} />
+        </button>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.ink }}>{title}</div>
+      </div>
+      <div style={{ margin: "14px 24px 0" }}><Staff /></div>
+      <div style={{ padding: "20px 24px 0", fontSize: 13, color: C.inkSoft, lineHeight: 1.7, whiteSpace: "pre-line" }}>
+        {content}
+      </div>
+    </div>
+  );
+}
+
+function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onUploadAvatar, avatarUploading, avatarError, onNavSettings }) {
   const present = members.filter((m) => m.status === "present").length;
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => m.approval_status === "pending");
@@ -1008,8 +1111,17 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
         </div>
 
         <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Settings</div>
-        {["Notifications", "Privacy", "About De Voci Belli Chorale"].map((label) => (
-          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink }}>
+        {[
+          { label: "Notifications", nav: null },
+          { label: "Privacy", nav: "privacy" },
+          { label: "About De Voci Belli Chorale", nav: "about" },
+        ].map(({ label, nav }) => (
+          <div
+            key={label}
+            onClick={() => nav && onNavSettings?.(nav)}
+            className={nav ? "dvbc-tap" : ""}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink, cursor: nav ? "pointer" : "default" }}
+          >
             {label}
             <ChevronLeft size={16} color={C.inkSoft} style={{ transform: "rotate(180deg)" }} />
           </div>
@@ -1297,8 +1409,14 @@ export default function App() {
       {session && profile && (profile.approved || isAdmin) && screen === "profile" && (
         <Profile
           profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember} onReject={rejectMember}
-          onUploadAvatar={uploadAvatar} avatarUploading={avatarUploading} avatarError={avatarError}
+          onUploadAvatar={uploadAvatar} avatarUploading={avatarUploading} avatarError={avatarError} onNavSettings={setScreen}
         />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "privacy" && (
+        <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "about" && (
+        <StaticPage title="About De Voci Belli Chorale" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />
       )}
       {session && profile && (profile.approved || isAdmin) && <BottomNav screen={screen} onNav={setScreen} />}
     </div>
