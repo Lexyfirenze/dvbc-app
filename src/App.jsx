@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users } from "lucide-react";
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, Calendar, ThumbsUp } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
