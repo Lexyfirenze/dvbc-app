@@ -28,6 +28,10 @@ const C = {
 const GRADIENT = `linear-gradient(135deg, ${C.garnet} 0%, ${C.plum} 62%, #8C5FA0 100%)`;
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 
+/* ---------- Avatar upload constraints (match the `avatars` storage bucket config) ---------- */
+const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+const MAX_AVATAR_BYTES = 8 * 1024 * 1024; // 8MB
+
 /* ---------- Clock-in window: Sundays 2:00 PM - 3:30 PM, Africa/Lagos time (UTC+1, no DST) ---------- */
 function isClockInWindowOpen() {
   const now = new Date();
@@ -698,7 +702,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onUploadAvata
               <Camera size={13} color="#fff" />
             </label>
             <input
-              id="dvbc-avatar-input" type="file" accept="image/*" style={{ display: "none" }}
+              id="dvbc-avatar-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic" style={{ display: "none" }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadAvatar(f); e.target.value = ""; }}
             />
           </div>
@@ -913,6 +917,16 @@ export default function App() {
   const uploadAvatar = useCallback(async (file) => {
     if (!session) return;
     setAvatarError("");
+
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      setAvatarError("Please choose a JPEG, PNG, WEBP, or HEIC photo.");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError("That photo is too large — please choose one under 8MB.");
+      return;
+    }
+
     setAvatarUploading(true);
     try {
       const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
