@@ -563,6 +563,79 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
     return matchesPart && matchesSearch;
   });
 
+  // Group into sections by broad voice part (Soprano/Alto/Tenor/Bass),
+  // each containing every part variant (e.g. "Soprano I" + "Soprano II"), sorted by name.
+  const sectionOrder = ["Soprano", "Alto", "Tenor", "Bass"];
+  const groupedSections = sectionOrder
+    .map((section) => ({
+      section,
+      label: `${section}s`,
+      rows: filtered
+        .filter((m) => m.part.startsWith(section))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .filter((g) => g.rows.length > 0);
+  // Anything with a part that doesn't match a known section still shows up, grouped as "Other".
+  const groupedNames = new Set(groupedSections.flatMap((g) => g.rows.map((m) => m.id)));
+  const leftover = filtered.filter((m) => !groupedNames.has(m.id));
+  if (leftover.length > 0) {
+    groupedSections.push({ section: "Other", label: "Other", rows: leftover.sort((a, b) => a.name.localeCompare(b.name)) });
+  }
+
+  const renderMemberRow = (m) => {
+    const row = (
+      <>
+        <div style={{
+          width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+          background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+        }}>
+          {m.avatar_url
+            ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
+          <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
+          {m.clocked_in_at && (
+            <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Clocked in {formatClockTime(m.clocked_in_at)}</div>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Pill tone={m.status}>{m.status}</Pill>
+          {m.remark && (
+            <span style={{
+              background: C.amberBg, color: C.amberText, fontSize: 10, fontWeight: 700,
+              padding: "5px 9px", borderRadius: 999, whiteSpace: "nowrap",
+            }}>
+              Late
+            </span>
+          )}
+        </div>
+      </>
+    );
+
+    if (isAdmin) {
+      return (
+        <button
+          key={m.id} onClick={() => onCycle(m)} className="dvbc-row"
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
+        >
+          {row}
+        </button>
+      );
+    }
+
+    return (
+      <div
+        key={m.id}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}
+      >
+        {row}
+      </div>
+    );
+  };
+
   return (
     <div style={{ paddingBottom: 110 }}>
       <TopHeader
@@ -646,59 +719,15 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
         {!loading && filtered.length === 0 && (
           <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No members match.</div>
         )}
-        {filtered.map((m) => {
-          const row = (
-            <>
-              <div style={{
-                width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
-                background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-                fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
-              }}>
-                {m.avatar_url
-                  ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
-                <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
-                {m.clocked_in_at && (
-                  <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Clocked in {formatClockTime(m.clocked_in_at)}</div>
-                )}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Pill tone={m.status}>{m.status}</Pill>
-                {m.remark && (
-                  <span style={{
-                    background: C.amberBg, color: C.amberText, fontSize: 10, fontWeight: 700,
-                    padding: "5px 9px", borderRadius: 999, whiteSpace: "nowrap",
-                  }}>
-                    Late
-                  </span>
-                )}
-              </div>
-            </>
-          );
-
-          if (isAdmin) {
-            return (
-              <button
-                key={m.id} onClick={() => onCycle(m)} className="dvbc-row"
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
-              >
-                {row}
-              </button>
-            );
-          }
-
-          return (
-            <div
-              key={m.id}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}
-            >
-              {row}
+        {groupedSections.map((g, i) => (
+          <div key={g.section} style={{ marginTop: i === 0 ? 0 : 22 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>{g.label}</div>
+              <div style={{ fontSize: 12, color: C.inkSoft }}>({g.rows.length})</div>
             </div>
-          );
-        })}
+            {g.rows.map((m) => renderMemberRow(m))}
+          </div>
+        ))}
       </div>
       <div style={{ textAlign: "center", fontSize: 10.5, color: C.inkSoft, opacity: 0.7, padding: "14px 0 0" }}>
         {isAdmin ? "Shared with every chorister, live" : "Only section leaders can update attendance"}
