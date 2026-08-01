@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic } from "lucide-react";
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -1772,6 +1772,7 @@ function PracticeLists({ isAdmin }) {
   const [editingTrack, setEditingTrack] = useState(null);
   const [trackForm, setTrackForm] = useState({ title: "", composer: "" });
   const [trackAudioFile, setTrackAudioFile] = useState(null);
+  const [trackPdfFile, setTrackPdfFile] = useState(null);
   const [savingTrack, setSavingTrack] = useState(false);
   const [trackError, setTrackError] = useState("");
 
@@ -1905,6 +1906,7 @@ function PracticeLists({ isAdmin }) {
   const resetTrackForm = () => {
     setTrackForm({ title: "", composer: "" });
     setTrackAudioFile(null);
+    setTrackPdfFile(null);
     setEditingTrack(null);
     setShowTrackForm(false);
     setTrackError("");
@@ -1914,6 +1916,7 @@ function PracticeLists({ isAdmin }) {
     setEditingTrack(track);
     setTrackForm({ title: track.title || "", composer: track.composer || "" });
     setTrackAudioFile(null);
+    setTrackPdfFile(null);
     setShowTrackForm(true);
   };
 
@@ -1923,6 +1926,7 @@ function PracticeLists({ isAdmin }) {
     setSavingTrack(true);
     setTrackError("");
     let audio_url = editingTrack?.audio_url || null;
+    let sheet_pdf_url = editingTrack?.sheet_pdf_url || null;
     try {
       if (trackAudioFile) {
         const ext = (trackAudioFile.name.split(".").pop() || "mp3").toLowerCase();
@@ -1932,7 +1936,14 @@ function PracticeLists({ isAdmin }) {
         const { data } = supabase.storage.from("practice-audio").getPublicUrl(path);
         audio_url = data.publicUrl;
       }
-      const payload = { title: trackForm.title.trim(), composer: trackForm.composer.trim(), audio_url, practice_list_id: openListId };
+      if (trackPdfFile) {
+        const pdfPath = `${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+        const { error: pdfUploadError } = await supabase.storage.from("practice-sheets").upload(pdfPath, trackPdfFile);
+        if (pdfUploadError) throw pdfUploadError;
+        const { data: pdfData } = supabase.storage.from("practice-sheets").getPublicUrl(pdfPath);
+        sheet_pdf_url = pdfData.publicUrl;
+      }
+      const payload = { title: trackForm.title.trim(), composer: trackForm.composer.trim(), audio_url, sheet_pdf_url, practice_list_id: openListId };
       if (editingTrack) {
         const { error } = await supabase.from("practice_tracks").update(payload).eq("id", editingTrack.id);
         if (error) throw error;
@@ -1975,7 +1986,8 @@ function PracticeLists({ isAdmin }) {
 
         <div style={{ padding: "18px 24px 0" }}>
           {isAdmin && (
-            <button              onClick={() => { setEditingTrack(null); setTrackForm({ title: "", composer: "" }); setShowTrackForm(true); }}
+            <button
+              onClick={() => { setEditingTrack(null); setTrackForm({ title: "", composer: "" }); setShowTrackForm(true); }}
               className="dvbc-tap"
               style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
             >
@@ -1998,6 +2010,16 @@ function PracticeLists({ isAdmin }) {
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
                   {t.composer && <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{t.composer}</div>}
                 </div>
+                {t.sheet_pdf_url && (
+                  <a
+                    href={t.sheet_pdf_url} target="_blank" rel="noopener noreferrer" className="dvbc-tap"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ width: 30, height: 30, borderRadius: "50%", background: C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: C.plum }}
+                    title="View sheet music"
+                  >
+                    <FileText size={14} color={C.plum} />
+                  </a>
+                )}
                 {isAdmin && (
                   <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
                     <button onClick={() => startEditTrack(t)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Edit</button>
@@ -2016,8 +2038,16 @@ function PracticeLists({ isAdmin }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <input style={inputStyle} placeholder="Track title" value={trackForm.title} onChange={(e) => setTrackForm({ ...trackForm, title: e.target.value })} />
                 <input style={inputStyle} placeholder="Composer (optional)" value={trackForm.composer} onChange={(e) => setTrackForm({ ...trackForm, composer: e.target.value })} />
-                <input type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/aac,audio/ogg,audio/webm" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
-                {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft }}>Leave file empty to keep the existing audio.</div>}
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Audio</label>
+                  <input type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/aac,audio/ogg,audio/webm" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+                  {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>Leave empty to keep the existing audio.</div>}
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Sheet music (PDF, optional)</label>
+                  <input type="file" accept="application/pdf" onChange={(e) => setTrackPdfFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+                  {editingTrack?.sheet_pdf_url && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>Leave empty to keep the existing PDF.</div>}
+                </div>
               </div>
               {trackError && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 10 }}>
@@ -2550,5 +2580,3 @@ export default function App() {
                                                                                         }
 
  
-
-      
