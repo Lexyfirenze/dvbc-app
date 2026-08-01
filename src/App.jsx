@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Home, CheckSquare, Music2, User, Search, Bell, Play, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users } from "lucide-react";
+import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -1754,10 +1754,404 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
   );
 }
 
+function PracticeLists({ isAdmin }) {
+  const [lists, setLists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openListId, setOpenListId] = useState(null);
+  const [filter, setFilter] = useState("All");
+  const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
+
+  const [showListForm, setShowListForm] = useState(false);
+  const [editingList, setEditingList] = useState(null);
+  const [listForm, setListForm] = useState({ title: "", voice_part: "All" });
+  const [listCoverFile, setListCoverFile] = useState(null);
+  const [savingList, setSavingList] = useState(false);
+  const [listError, setListError] = useState("");
+
+  const [showTrackForm, setShowTrackForm] = useState(false);
+  const [editingTrack, setEditingTrack] = useState(null);
+  const [trackForm, setTrackForm] = useState({ title: "", composer: "" });
+  const [trackAudioFile, setTrackAudioFile] = useState(null);
+  const [savingTrack, setSavingTrack] = useState(false);
+  const [trackError, setTrackError] = useState("");
+
+  const [currentTrackId, setCurrentTrackId] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef(null);
+
+  const loadLists = useCallback(async () => {
+    setLoading(true);
+    const [listsRes, tracksRes] = await Promise.all([
+      supabase.from("practice_lists").select("*").order("display_order", { ascending: true }),
+      supabase.from("practice_tracks").select("*").order("display_order", { ascending: true }),
+    ]);
+    const tracksByList = {};
+    (tracksRes.data || []).forEach((t) => {
+      if (!tracksByList[t.practice_list_id]) tracksByList[t.practice_list_id] = [];
+      tracksByList[t.practice_list_id].push(t);
+    });
+    setLists((listsRes.data || []).map((l) => ({ ...l, tracks: tracksByList[l.id] || [] })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadLists(); }, [loadLists]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => setProgress(audio.currentTime);
+    const onLoaded = () => setDuration(audio.duration || 0);
+    const onEnd = () => setIsPlaying(false);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("ended", onEnd);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("ended", onEnd);
+    };
+  }, [currentTrackId]);
+
+  const openList = lists.find((l) => l.id === openListId);
+  const filteredLists = lists.filter((l) => filter === "All" || l.voice_part === "All" || l.voice_part.startsWith(filter));
+
+  const formatDuration = (secs) => {
+    if (!secs || Number.isNaN(secs)) return "0:00";
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  const playTrack = (track) => {
+    if (currentTrackId === track.id) {
+      if (isPlaying) { audioRef.current?.pause(); setIsPlaying(false); }
+      else { audioRef.current?.play(); setIsPlaying(true); }
+      return;
+    }
+    setCurrentTrackId(track.id);
+    setProgress(0);
+    setIsPlaying(true);
+    // Let the src update via render, then play once ready.
+    setTimeout(() => audioRef.current?.play(), 0);
+  };
+
+  const seekTo = (e) => {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * duration;
+  };
+
+  const currentTrack = openList?.tracks.find((t) => t.id === currentTrackId);
+
+  const resetListForm = () => {
+    setListForm({ title: "", voice_part: "All" });
+    setListCoverFile(null);
+    setEditingList(null);
+    setShowListForm(false);
+    setListError("");
+  };
+
+  const startEditList = (list) => {
+    setEditingList(list);
+    setListForm({ title: list.title || "", voice_part: list.voice_part || "All" });
+    setListCoverFile(null);
+    setShowListForm(true);
+  };
+
+  const saveList = async () => {
+    if (!listForm.title.trim()) { setListError("Title is required."); return; }
+    setSavingList(true);
+    setListError("");
+    let cover_url = editingList?.cover_url || null;
+    try {
+      if (listCoverFile) {
+        const ext = (listCoverFile.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: uploadError } = await supabase.storage.from("practice-covers").upload(path, listCoverFile);
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("practice-covers").getPublicUrl(path);
+        cover_url = data.publicUrl;
+      }
+      const payload = { title: listForm.title.trim(), voice_part: listForm.voice_part, cover_url };
+      if (editingList) {
+        const { error } = await supabase.from("practice_lists").update(payload).eq("id", editingList.id);
+        if (error) throw error;
+      } else {
+        const maxOrder = lists.reduce((m, l) => Math.max(m, l.display_order || 0), 0);
+        const { error } = await supabase.from("practice_lists").insert({ ...payload, display_order: maxOrder + 1 });
+        if (error) throw error;
+      }
+      resetListForm();
+      loadLists();
+    } catch (err) {
+      setListError(err.message || "Could not save. Please try again.");
+    } finally {
+      setSavingList(false);
+    }
+  };
+
+  const deleteList = async (list) => {
+    if (!window.confirm(`Delete "${list.title}" and all its tracks?`)) return;
+    await supabase.from("practice_tracks").delete().eq("practice_list_id", list.id);
+    await supabase.from("practice_lists").delete().eq("id", list.id);
+    if (openListId === list.id) setOpenListId(null);
+    loadLists();
+  };
+
+  const resetTrackForm = () => {
+    setTrackForm({ title: "", composer: "" });
+    setTrackAudioFile(null);
+    setEditingTrack(null);
+    setShowTrackForm(false);
+    setTrackError("");
+  };
+
+  const startEditTrack = (track) => {
+    setEditingTrack(track);
+    setTrackForm({ title: track.title || "", composer: track.composer || "" });
+    setTrackAudioFile(null);
+    setShowTrackForm(true);
+  };
+
+  const saveTrack = async () => {
+    if (!trackForm.title.trim()) { setTrackError("Title is required."); return; }
+    if (!editingTrack && !trackAudioFile) { setTrackError("Please choose an audio file."); return; }
+    setSavingTrack(true);
+    setTrackError("");
+    let audio_url = editingTrack?.audio_url || null;
+    try {
+      if (trackAudioFile) {
+        const ext = (trackAudioFile.name.split(".").pop() || "mp3").toLowerCase();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: uploadError } = await supabase.storage.from("practice-audio").upload(path, trackAudioFile);
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("practice-audio").getPublicUrl(path);
+        audio_url = data.publicUrl;
+      }
+      const payload = { title: trackForm.title.trim(), composer: trackForm.composer.trim(), audio_url, practice_list_id: openListId };
+      if (editingTrack) {
+        const { error } = await supabase.from("practice_tracks").update(payload).eq("id", editingTrack.id);
+        if (error) throw error;
+      } else {
+        const maxOrder = (openList?.tracks || []).reduce((m, t) => Math.max(m, t.display_order || 0), 0);
+        const { error } = await supabase.from("practice_tracks").insert({ ...payload, display_order: maxOrder + 1 });
+        if (error) throw error;
+      }
+      resetTrackForm();
+      loadLists();
+    } catch (err) {
+      setTrackError(err.message || "Could not save. Please try again.");
+    } finally {
+      setSavingTrack(false);
+    }
+  };
+
+  const deleteTrack = async (track) => {
+    if (!window.confirm(`Delete "${track.title}"?`)) return;
+    if (currentTrackId === track.id) { audioRef.current?.pause(); setIsPlaying(false); setCurrentTrackId(null); }
+    await supabase.from("practice_tracks").delete().eq("id", track.id);
+    loadLists();
+  };
+
+  const inputStyle = {
+    border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12,
+    padding: "12px 14px", fontSize: 13.5, width: "100%", outline: "none", color: C.ink,
+  };
+
+  if (openList) {
+    return (
+      <div style={{ paddingBottom: currentTrack ? 190 : 110 }}>
+        <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setOpenListId(null)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <ChevronLeft size={20} color={C.ink} />
+          </button>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>{openList.title}</div>
+        </div>
+        <div style={{ padding: "6px 24px 0" }}><Pill>{openList.voice_part}</Pill></div>
+
+        <div style={{ padding: "18px 24px 0" }}>
+          {isAdmin && (
+            <button              onClick={() => { setEditingTrack(null); setTrackForm({ title: "", composer: "" }); setShowTrackForm(true); }}
+              className="dvbc-tap"
+              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
+            >
+              + Add Track
+            </button>
+          )}
+
+          {openList.tracks.length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No tracks in this list yet.</div>
+          )}
+
+          {openList.tracks.map((t) => {
+            const playing = currentTrackId === t.id && isPlaying;
+            return (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+                <button onClick={() => playTrack(t)} className="dvbc-tap" style={{ width: 34, height: 34, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                  {playing ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
+                </button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                  {t.composer && <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{t.composer}</div>}
+                </div>
+                {isAdmin && (
+                  <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+                    <button onClick={() => startEditTrack(t)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Edit</button>
+                    <button onClick={() => deleteTrack(t)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.roseDeep, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Delete</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {showTrackForm && (
+            <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 14 }}>
+              <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+                {editingTrack ? "Edit Track" : "Add Track"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input style={inputStyle} placeholder="Track title" value={trackForm.title} onChange={(e) => setTrackForm({ ...trackForm, title: e.target.value })} />
+                <input style={inputStyle} placeholder="Composer (optional)" value={trackForm.composer} onChange={(e) => setTrackForm({ ...trackForm, composer: e.target.value })} />
+                <input type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/aac,audio/ogg,audio/webm" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+                {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft }}>Leave file empty to keep the existing audio.</div>}
+              </div>
+              {trackError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 10 }}>
+                  <AlertCircle size={13} /> {trackError}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button onClick={saveTrack} disabled={savingTrack} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingTrack ? "default" : "pointer", opacity: savingTrack ? 0.8 : 1 }}>
+                  {savingTrack ? "Saving…" : "Save"}
+                </button>
+                <button onClick={resetTrackForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {currentTrack && (
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
+            padding: "14px 24px calc(env(safe-area-inset-bottom, 0px) + 14px)",
+          }}>
+            <audio ref={audioRef} src={currentTrack.audio_url} autoPlay />
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.title}</div>
+            <div onClick={seekTo} style={{ height: 6, borderRadius: 999, background: C.lilacSoft, cursor: "pointer", position: "relative" }}>
+              <div style={{ height: "100%", borderRadius: 999, background: GRADIENT, width: `${duration ? (progress / duration) * 100 : 0}%` }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <div style={{ fontSize: 10.5, color: C.inkSoft }}>{formatDuration(progress)} / {formatDuration(duration)}</div>
+              <button onClick={() => playTrack(currentTrack)} className="dvbc-tap" style={{ width: 30, height: 30, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                {isPlaying ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingBottom: 110 }}>
+      <TopHeader title="Practice Lists" subtitle="Audio playlists by voice part" />
+
+      <div style={{ display: "flex", gap: 8, padding: "14px 24px 4px", overflowX: "auto" }}>
+        {parts.map((p) => (
+          <Chip key={p} active={filter === p} onClick={() => setFilter(p)}>{p}</Chip>
+        ))}
+      </div>
+
+      <div style={{ padding: "14px 24px 0" }}>
+        {isAdmin && (
+          <button
+            onClick={() => { setEditingList(null); setListForm({ title: "", voice_part: "All" }); setShowListForm(true); }}
+            className="dvbc-tap"
+            style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
+          >
+            + Add List
+          </button>
+        )}
+
+        {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+        {!loading && filteredLists.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No practice lists yet.</div>
+        )}
+
+        {filteredLists.map((list) => (
+          <button
+            key={list.id} onClick={() => setOpenListId(list.id)} className="dvbc-tap"
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: 12, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, marginBottom: 10, cursor: "pointer" }}
+          >
+            <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {list.cover_url
+                ? <img src={list.cover_url} alt={list.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <ListMusic size={20} color={C.plum} />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{list.title}</div>
+              <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 2 }}>{list.tracks.length} track{list.tracks.length === 1 ? "" : "s"}</div>
+            </div>
+            <Pill>{list.voice_part}</Pill>
+            {isAdmin && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <span onClick={() => startEditList(list)} style={{ color: C.plum, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Edit</span>
+                <span onClick={() => deleteList(list)} style={{ color: C.roseDeep, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Delete</span>
+              </div>
+            )}
+          </button>
+        ))}
+
+        {showListForm && (
+          <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 6 }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+              {editingList ? "Edit List" : "Add List"}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input style={inputStyle} placeholder="List title" value={listForm.title} onChange={(e) => setListForm({ ...listForm, title: e.target.value })} />
+              <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                <select
+                  value={listForm.voice_part}
+                  onChange={(e) => setListForm({ ...listForm, voice_part: e.target.value })}
+                  style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                >
+                  <option value="All">All</option>
+                  {VOICE_PARTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <input type="file" accept="image/*" onChange={(e) => setListCoverFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+            </div>
+            {listError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 10 }}>
+                <AlertCircle size={13} /> {listError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={saveList} disabled={savingList} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingList ? "default" : "pointer", opacity: savingList ? 0.8 : 1 }}>
+                {savingList ? "Saving…" : "Save"}
+              </button>
+              <button onClick={resetListForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BottomNav({ screen, onNav }) {
   const items = [
     { key: "dashboard", label: "Home", icon: Home },
     { key: "attendance", label: "Attendance", icon: CheckSquare },
+    { key: "practice", label: "Practice", icon: ListMusic },
     { key: "executives", label: "Execs", icon: Users },
     { key: "library", label: "Library", icon: Music2 },
     { key: "profile", label: "Profile", icon: User },
@@ -2134,6 +2528,7 @@ export default function App() {
       onMarkConversationRead={markConversationRead} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
+  else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} />;
   else if (screen === "privacy") content = <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "about") content = <StaticPage title="About Us" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "profile") content = (
@@ -2143,7 +2538,7 @@ export default function App() {
       onNavSettings={(nav) => setScreen(nav)} />
   );
 
-  const showBottomNav = ["dashboard", "attendance", "library", "executives", "profile"].includes(screen);
+  const showBottomNav = ["dashboard", "attendance", "library", "practice", "executives", "profile"].includes(screen);
 
   return (
     <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -2155,3 +2550,5 @@ export default function App() {
                                                                                         }
 
  
+
+      
