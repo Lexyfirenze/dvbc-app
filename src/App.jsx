@@ -1654,7 +1654,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
               <Camera size={13} color="#fff" />
             </label>
             <input
-              id="dvbc-avatar-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic" style={{ display: "none" }}
+              id="dvbc-avatar-input" type="file" accept="image/*" style={{ display: "none" }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadAvatar(f); e.target.value = ""; }}
             />
           </div>
@@ -2040,7 +2040,7 @@ function PracticeLists({ isAdmin }) {
                 <input style={inputStyle} placeholder="Composer (optional)" value={trackForm.composer} onChange={(e) => setTrackForm({ ...trackForm, composer: e.target.value })} />
                 <div>
                   <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Audio</label>
-                  <input type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/aac,audio/ogg,audio/webm" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+                  <input type="file" accept="audio/*" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
                   {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>Leave empty to keep the existing audio.</div>}
                 </div>
                 <div>
