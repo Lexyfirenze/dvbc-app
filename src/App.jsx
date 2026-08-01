@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
@@ -822,12 +822,28 @@ function Library({ favorites, toggleFavorite }) {
   );
 }
 
-function Messages({ posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen }) {
+function Messages({
+  posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
+  members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
+  onCreateConversation, onSendChatMessage, onMarkConversationRead,
+}) {
+  const [tab, setTab] = useState("posts");
   const [openPostId, setOpenPostId] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const [posting, setPosting] = useState(false);
+
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [isGroupMode, setIsGroupMode] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [groupTitle, setGroupTitle] = useState("");
+  const [chatDraft, setChatDraft] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
+  const [typingUsers, setTypingUsers] = useState({}); // { memberId: name }
+
+  const chatChannelRef = useRef(null);
+  const typingStopTimer = useRef(null);
 
   const openPost = (post) => {
     setOpenPostId(post.id);
@@ -858,6 +874,66 @@ function Messages({ posts, loading, isAdmin, profile, onBack, onSubmitPost, onSu
   };
 
   const openPostData = posts.find((p) => p.id === openPostId);
+  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+
+  // Typing-indicator broadcast channel for whichever chat is open (ephemeral — no table involved)
+  useEffect(() => {
+    if (!activeConversationId) { chatChannelRef.current = null; return; }
+    const channel = supabase.channel(`typing:${activeConversationId}`);
+    channel
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (payload.member_id === profile?.id) return;
+        setTypingUsers((prev) => {
+          const next = { ...prev };
+          if (payload.typing) next[payload.member_id] = payload.name;
+          else delete next[payload.member_id];
+          return next;
+        });
+      })
+      .subscribe();
+    chatChannelRef.current = channel;
+    return () => { supabase.removeChannel(channel); chatChannelRef.current = null; setTypingUsers({}); };
+  }, [activeConversationId, profile?.id]);
+
+  // Mark as read whenever a conversation is opened or new messages arrive while it's open
+  useEffect(() => {
+    if (activeConversationId) onMarkConversationRead(activeConversationId);
+  }, [activeConversationId, activeConversation?.messages?.length, onMarkConversationRead]);
+
+  const handleChatInputChange = (val) => {
+    setChatDraft(val);
+    if (chatChannelRef.current && profile) {
+      chatChannelRef.current.send({ type: "broadcast", event: "typing", payload: { member_id: profile.id, name: profile.name?.split(" ")[0], typing: true } });
+      clearTimeout(typingStopTimer.current);
+      typingStopTimer.current = setTimeout(() => {
+        chatChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { member_id: profile.id, name: profile.name, typing: false } });
+      }, 2000);
+    }
+  };
+
+  const submitChatMessage = async () => {
+    if (!chatDraft.trim() || !activeConversationId || sendingChat) return;
+    setSendingChat(true);
+    await onSendChatMessage(activeConversationId, chatDraft.trim());
+    setChatDraft("");
+    clearTimeout(typingStopTimer.current);
+    chatChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { member_id: profile.id, name: profile.name, typing: false } });
+    setSendingChat(false);
+  };
+
+  const otherParticipants = (conv) => (conv.participants || []).filter((p) => p.member_id !== profile?.id);
+  const conversationTitle = (conv) => {
+    if (conv.is_group) return conv.title || otherParticipants(conv).map((p) => p.member?.name?.split(" ")[0]).join(", ") || "Group";
+    return otherParticipants(conv)[0]?.member?.name || "Unknown";
+  };
+  const conversationAvatarUrl = (conv) => (conv.is_group ? null : otherParticipants(conv)[0]?.member?.avatar_url);
+  const lastMessageOf = (conv) => { const msgs = conv.messages || []; return msgs.length ? msgs[msgs.length - 1] : null; };
+  const unreadCountFor = (conv) => {
+    const mine = (conv.participants || []).find((p) => p.member_id === profile?.id);
+    const lastRead = mine?.last_read_at;
+    return (conv.messages || []).filter((m) => m.sender_id !== profile?.id && (!lastRead || new Date(m.created_at) > new Date(lastRead))).length;
+  };
+  const seenByOthers = (conv, message) => otherParticipants(conv).filter((p) => p.last_read_at && new Date(p.last_read_at) >= new Date(message.created_at));
 
   if (openPostData) {
     return (
@@ -944,6 +1020,74 @@ function Messages({ posts, loading, isAdmin, profile, onBack, onSubmitPost, onSu
     );
   }
 
+  if (tab === "chats" && activeConversation) {
+    const msgs = activeConversation.messages || [];
+    const title = conversationTitle(activeConversation);
+    const typingNames = Object.values(typingUsers);
+    const lastMine = [...msgs].reverse().find((m) => m.sender_id === profile?.id);
+    const seenBy = lastMine ? seenByOthers(activeConversation, lastMine) : [];
+
+    return (
+      <div style={{ paddingBottom: 90, display: "flex", flexDirection: "column", minHeight: "100%" }}>
+        <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={onCloseConversation} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <ChevronLeft size={20} color={C.ink} />
+          </button>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>{title}</div>
+        </div>
+
+        <div style={{ flex: 1, padding: "16px 24px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+          {msgs.length === 0 && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 12.5, padding: "20px 0" }}>Say hello 👋</div>}
+          {msgs.map((m) => {
+            const mine = m.sender_id === profile?.id;
+            return (
+              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+                {!mine && activeConversation.is_group && (
+                  <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 2, marginLeft: 4 }}>{m.sender?.name}</div>
+                )}
+                <div style={{
+                  maxWidth: "78%", padding: "10px 14px", borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                  background: mine ? GRADIENT : C.lilacSoft, color: mine ? "#fff" : C.ink, fontSize: 13.5, lineHeight: 1.5,
+                }}>
+                  {m.content}
+                </div>
+                <div style={{ fontSize: 9.5, color: C.inkSoft, marginTop: 3, marginLeft: mine ? 0 : 4, marginRight: mine ? 4 : 0 }}>{timeAgo(m.created_at)}</div>
+              </div>
+            );
+          })}
+          {lastMine && seenBy.length > 0 && (
+            <div style={{ textAlign: "right", fontSize: 9.5, color: C.inkSoft, marginTop: -4 }}>
+              {activeConversation.is_group ? `Seen by ${seenBy.length} of ${otherParticipants(activeConversation).length}` : "Seen"}
+            </div>
+          )}
+          {typingNames.length > 0 && (
+            <div style={{ fontSize: 11.5, color: C.inkSoft, fontStyle: "italic" }}>{typingNames.join(", ")} typing…</div>
+          )}
+        </div>
+
+        <div style={{
+          position: "sticky", bottom: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
+          padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
+        }}>
+          <input
+            value={chatDraft} onChange={(e) => handleChatInputChange(e.target.value)} placeholder="Message…"
+            style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
+            onKeyDown={(e) => { if (e.key === "Enter") submitChatMessage(); }}
+          />
+          <button
+            onClick={submitChatMessage} disabled={!chatDraft.trim() || sendingChat} className="dvbc-tap"
+            style={{
+              background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
+              border: "none", cursor: chatDraft.trim() ? "pointer" : "default", opacity: chatDraft.trim() ? 1 : 0.5, flexShrink: 0,
+            }}
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ paddingBottom: 110 }}>
       <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", alignItems: "center", gap: 10 }}>
@@ -954,61 +1098,124 @@ function Messages({ posts, loading, isAdmin, profile, onBack, onSubmitPost, onSu
       </div>
       <div style={{ margin: "14px 24px 0" }}><Staff /></div>
 
-      <div style={{ padding: "18px 24px 0" }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
-
-        {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
-        {!loading && posts.length === 0 && (
-          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No posts yet.</div>
-        )}
-
-        {posts.map((post) => {
-          const commentCount = (post.comments || []).length;
-          const isNew = hasNewComments(post);
-          const authorName = post.author?.id === profile?.id ? "you" : (post.author?.name || "Unknown");
-          return (
-            <button
-              key={post.id} onClick={() => openPost(post)} className="dvbc-tap"
-              style={{
-                width: "100%", textAlign: "left", display: "flex", gap: 12, padding: 14,
-                background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, marginBottom: 12, cursor: "pointer",
-              }}
-            >
-              <div style={{
-                width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
-                background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-                fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
-              }}>
-                {post.author?.avatar_url
-                  ? <img src={post.author.avatar_url} alt={post.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  : (post.author?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ fontSize: 11, color: C.inkSoft }}>{timeAgo(post.created_at)}</div>
-                  {isNew && (
-                    <span style={{ background: C.roseBg, color: C.roseDeep, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>
-                      New comments
-                    </span>
-                  )}
-                </div>
-                <div style={{
-                  fontSize: 13, color: C.ink, marginTop: 4, lineHeight: 1.5,
-                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                }}>
-                  {post.content}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-                  <div style={{ fontSize: 11, color: C.inkSoft }}>Sent by {authorName}</div>
-                  <div style={{ fontSize: 11, color: C.inkSoft }}>{commentCount} comment{commentCount === 1 ? "" : "s"}</div>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <div style={{ display: "flex", gap: 8, padding: "16px 24px 0" }}>
+        <Chip active={tab === "posts"} onClick={() => setTab("posts")}>Posts</Chip>
+        <Chip active={tab === "chats"} onClick={() => setTab("chats")}>Chats</Chip>
       </div>
 
-      {isAdmin && (
+      {tab === "posts" && (
+        <div style={{ padding: "18px 24px 0" }}>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
+
+          {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+          {!loading && posts.length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No posts yet.</div>
+          )}
+
+          {posts.map((post) => {
+            const commentCount = (post.comments || []).length;
+            const isNew = hasNewComments(post);
+            const authorName = post.author?.id === profile?.id ? "you" : (post.author?.name || "Unknown");
+            return (
+              <button
+                key={post.id} onClick={() => openPost(post)} className="dvbc-tap"
+                style={{
+                  width: "100%", textAlign: "left", display: "flex", gap: 12, padding: 14,
+                  background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, marginBottom: 12, cursor: "pointer",
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                  background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+                }}>
+                  {post.author?.avatar_url
+                    ? <img src={post.author.avatar_url} alt={post.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : (post.author?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ fontSize: 11, color: C.inkSoft }}>{timeAgo(post.created_at)}</div>
+                    {isNew && (
+                      <span style={{ background: C.roseBg, color: C.roseDeep, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                        New comments
+                      </span>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: 13, color: C.ink, marginTop: 4, lineHeight: 1.5,
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                  }}>
+                    {post.content}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: C.inkSoft }}>Sent by {authorName}</div>
+                    <div style={{ fontSize: 11, color: C.inkSoft }}>{commentCount} comment{commentCount === 1 ? "" : "s"}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "chats" && (
+        <div style={{ padding: "18px 24px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Chats</div>
+            <button
+              onClick={() => setNewChatOpen(true)} className="dvbc-tap"
+              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "7px 13px", borderRadius: 10, border: "none", cursor: "pointer" }}
+            >
+              + New
+            </button>
+          </div>
+
+          {loadingConversations && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+          {!loadingConversations && conversations.length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No chats yet — start one above.</div>
+          )}
+
+          {conversations.map((conv) => {
+            const unread = unreadCountFor(conv);
+            const last = lastMessageOf(conv);
+            const title = conversationTitle(conv);
+            const avatarUrl = conversationAvatarUrl(conv);
+            return (
+              <button
+                key={conv.id} onClick={() => onOpenConversation(conv.id)} className="dvbc-tap"
+                style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: "12px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer" }}
+              >
+                <div style={{
+                  width: 44, height: 44, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                  background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+                }}>
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : conv.is_group ? <Users size={18} color={C.plum} /> : title.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{title}</div>
+                    {last && <div style={{ fontSize: 10.5, color: C.inkSoft }}>{timeAgo(last.created_at)}</div>}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {last ? `${last.sender_id === profile?.id ? "You: " : ""}${last.content}` : "No messages yet"}
+                  </div>
+                </div>
+                {unread > 0 && (
+                  <div style={{ minWidth: 20, height: 20, borderRadius: 999, background: C.roseDeep, color: "#fff", fontSize: 10.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>
+                    {unread > 9 ? "9+" : unread}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "posts" && isAdmin && (
         <button
           onClick={() => setComposerOpen(true)} className="dvbc-tap"
           style={{
@@ -1045,6 +1252,83 @@ function Messages({ posts, loading, isAdmin, profile, onBack, onSubmitPost, onSu
               </button>
               <button
                 onClick={() => { setComposerOpen(false); setDraft(""); }} className="dvbc-tap"
+                style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {newChatOpen && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(35,26,59,0.45)", zIndex: 30,
+          display: "flex", alignItems: "flex-end",
+        }}>
+          <div style={{ background: "#fff", width: "100%", maxHeight: "82vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: "20px 24px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New chat</div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <Chip active={!isGroupMode} onClick={() => { setIsGroupMode(false); setSelectedMemberIds([]); }}>Direct</Chip>
+              <Chip active={isGroupMode} onClick={() => setIsGroupMode(true)}>Group</Chip>
+            </div>
+
+            {isGroupMode && (
+              <input
+                value={groupTitle} onChange={(e) => setGroupTitle(e.target.value)} placeholder="Group name"
+                style={{ width: "100%", border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "12px 14px", fontSize: 13.5, outline: "none", color: C.ink, marginBottom: 12 }}
+              />
+            )}
+
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              {members.filter((m) => m.id !== profile?.id).map((m) => {
+                const selected = selectedMemberIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      if (isGroupMode) setSelectedMemberIds((prev) => (selected ? prev.filter((id) => id !== m.id) : [...prev, m.id]));
+                      else setSelectedMemberIds([m.id]);
+                    }}
+                    className="dvbc-tap"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left", borderBottom: `1px solid ${C.lilacLine}` }}
+                  >
+                    <div style={{
+                      width: 32, height: 32, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                      background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                      fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
+                    }}>
+                      {m.avatar_url
+                        ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                    </div>
+                    <div style={{ flex: 1, fontSize: 13, color: C.ink }}>{m.name}</div>
+                    {isGroupMode ? (
+                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.6px solid ${selected ? C.garnet : C.lilacLine}`, background: selected ? GRADIENT : "transparent" }} />
+                    ) : (
+                      selected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.garnet }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                disabled={selectedMemberIds.length === 0 || (isGroupMode && !groupTitle.trim())}
+                onClick={async () => {
+                  await onCreateConversation(selectedMemberIds, isGroupMode ? groupTitle.trim() : null, isGroupMode);
+                  setNewChatOpen(false); setSelectedMemberIds([]); setGroupTitle(""); setIsGroupMode(false); setTab("chats");
+                }}
+                className="dvbc-tap"
+                style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: selectedMemberIds.length ? "pointer" : "default", opacity: selectedMemberIds.length ? 1 : 0.6 }}
+              >
+                Start chat
+              </button>
+              <button
+                onClick={() => { setNewChatOpen(false); setSelectedMemberIds([]); setGroupTitle(""); setIsGroupMode(false); }}
+                className="dvbc-tap"
                 style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: "pointer" }}
               >
                 Cancel
@@ -1526,6 +1810,9 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postSeenAt, setPostSeenAt] = useState(() => store.get("dvbc-post-seen", {}));
+  const [conversations, setConversations] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [activeConversationId, setActiveConversationId] = useState(null);
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
   useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
@@ -1621,151 +1908,63 @@ export default function App() {
     return (post.comments || []).some((c) => new Date(c.created_at) > new Date(lastSeen));
   }).length;
 
-  const toggleFavorite = useCallback((id) => {
-    setFavorites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }, []);
+  const unreadChatCount = conversations.reduce((total, conv) => {
+    const mine = (conv.participants || []).find((p) => p.member_id === profile?.id);
+    const lastRead = mine?.last_read_at;
+    const unread = (conv.messages || []).filter((m) => m.sender_id !== profile?.id && (!lastRead || new Date(m.created_at) > new Date(lastRead))).length;
+    return total + unread;
+  }, 0);
 
-  const isAdmin = !!profile?.is_admin;
+  // Load + live-subscribe to this member's chat conversations (Phase B)
+  const loadConversations = useCallback(async () => {
+    if (!profile) return;
+    setLoadingConversations(true);
+    const { data } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("member_id", profile.id);
+    const ids = (data || []).map((r) => r.conversation_id);
+    if (ids.length === 0) { setConversations([]); setLoadingConversations(false); return; }
 
-  const cycleStatus = useCallback(async (member) => {
-    if (!isAdmin) return; // guard: only admins may change status
-    const order = ["present", "absent", "excused"];
-    const next = order[(order.indexOf(member.status) + 1) % order.length];
-    setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, status: next } : m)));
-    const { error } = await supabase.from("members").update({ status: next }).eq("id", member.id);
-    if (error) {
-      // revert on failure (e.g. RLS/trigger rejected it)
-      setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, status: member.status } : m)));
-    }
-  }, [isAdmin]);
+    const { data: convos } = await supabase
+      .from("conversations")
+      .select(`
+        *,
+        participants:conversation_participants(member_id, last_read_at, member:members(id,name,avatar_url)),
+        messages:chat_messages(*, sender:members(id,name,avatar_url))
+      `)
+      .in("id", ids);
 
-  const handleClockIn = useCallback(async () => {
-    setClockInError("");
-    setClockingIn(true);
-    const { error } = await supabase.rpc("clock_in");
-    if (error) setClockInError(error.message || "Could not clock in. Please try again.");
-    setClockingIn(false);
-  }, []);
+    const sorted = (convos || []).map((c) => ({
+      ...c,
+      messages: (c.messages || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
+    })).sort((a, b) => {
+      const aLast = a.messages.length ? a.messages[a.messages.length - 1].created_at : a.created_at;
+      const bLast = b.messages.length ? b.messages[b.messages.length - 1].created_at : b.created_at;
+      return new Date(bLast) - new Date(aLast);
+    });
+    setConversations(sorted);
+    setLoadingConversations(false);
+  }, [profile]);
 
-  const approveMember = useCallback(async (memberId) => {
-    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: true, approval_status: "approved" } : m)));
-    const { error } = await supabase.from("members").update({ approved: true, approval_status: "approved" }).eq("id", memberId);
-    if (error) {
-      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approved: false, approval_status: "pending" } : m)));
-    }
-  }, []);
+  useEffect(() => {
+    if (!session || !profile) return;
+    loadConversations();
 
-  const rejectMember = useCallback(async (memberId) => {
-    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approval_status: "rejected" } : m)));
-    const { error } = await supabase.from("members").update({ approval_status: "rejected" }).eq("id", memberId);
-    if (error) {
-      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, approval_status: "pending" } : m)));
-    }
-  }, []);
+    const channel = supabase
+      .channel("chats-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, () => loadConversations())
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversation_participants" }, () => loadConversations())
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => loadConversations())
+      .subscribe();
 
-  const uploadAvatar = useCallback(async (file) => {
-    if (!session) return;
-    setAvatarError("");
+    return () => supabase.removeChannel(channel);
+  }, [session, profile, loadConversations]);
 
-    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
-      setAvatarError("Please choose a JPEG, PNG, WEBP, or HEIC photo.");
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setAvatarError("That photo is too large — please choose one under 8MB.");
-      return;
-    }
+  const createConversation = useCallback(async (memberIds, title, isGroup) => {
+    if (!profile) return;
 
-    setAvatarUploading(true);
-    try {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `${session.user.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, file, { upsert: true, cacheControl: "3600" });
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
-
-      const { error: updateError } = await supabase
-        .from("members")
-        .update({ avatar_url: publicUrl })
-        .eq("user_id", session.user.id);
-      if (updateError) throw updateError;
-
-      setProfile((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
-    } catch (err) {
-      setAvatarError(err.message || "Could not upload photo. Please try again.");
-    } finally {
-      setAvatarUploading(false);
-    }
-  }, [session]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  if (session === undefined) {
-    return (
-      <div style={{ minHeight: "100dvh", background: C.parchment, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ color: C.inkSoft, fontFamily: "Poppins, sans-serif", fontSize: 13 }}>Loading…</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ minHeight: "100dvh", background: C.parchment, fontFamily: "Poppins, sans-serif", position: "relative" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500;1,600&family=Poppins:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body, #root { min-height: 100%; background: ${C.parchment}; }
-        input::placeholder { color: #BBAEC4; }
-        button { user-select: none; }
-        .dvbc-tap { transition: transform .12s ease, opacity .12s ease, background .15s ease; }
-        .dvbc-tap:active { transform: scale(0.96); opacity: 0.88; }
-        .dvbc-row:active { background: rgba(76,46,158,0.06); }
-      `}</style>
-
-      {!session && <LoginScreen onAuthed={() => setScreen("dashboard")} />}
-      {session && profile && !profile.approved && !isAdmin && (
-        <PendingApproval profile={profile} onLogout={handleLogout} />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "dashboard" && (
-        <Dashboard profile={profile} members={members} onNav={setScreen} unreadCount={unreadPostCount} />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "attendance" && (
-        <Attendance
-          members={members} loading={loadingMembers} onCycle={cycleStatus} isAdmin={isAdmin}
-          profile={profile} onClockIn={handleClockIn} clockingIn={clockingIn} clockInError={clockInError}
-        />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "executives" && (
-        <Executives isAdmin={isAdmin} />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "library" && (
-        <Library favorites={favorites} toggleFavorite={toggleFavorite} />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "messages" && (
-        <Messages
-          posts={posts} loading={loadingPosts} isAdmin={isAdmin} profile={profile} onBack={() => setScreen("dashboard")}
-          onSubmitPost={submitPost} onSubmitComment={submitComment} seenMap={postSeenAt} onMarkSeen={markPostSeen}
-        />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "profile" && (
-        <Profile
-          profile={profile} members={members} onLogout={handleLogout} isAdmin={isAdmin} onApprove={approveMember} onReject={rejectMember}
-          onUploadAvatar={uploadAvatar} avatarUploading={avatarUploading} avatarError={avatarError} onNavSettings={setScreen}
-        />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "privacy" && (
-        <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />
-      )}
-      {session && profile && (profile.approved || isAdmin) && screen === "about" && (
-        <StaticPage title="About De Voci Belli Chorale" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />
-      )}
-      {session && profile && (profile.approved || isAdmin) && <BottomNav screen={screen} onNav={setScreen} />}
-    </div>
-  );
-}
-
+    if (!isGroup && memberIds.length === 1) {
+      const existing = conversations.find((c) =>
+        !c.is_group &&
+        (c.participants || []).some((p) => p.me
