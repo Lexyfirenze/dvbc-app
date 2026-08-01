@@ -137,7 +137,20 @@ function formatClockTime(iso) {
   }
 }
 
-/* ---------- Local persistence (favorites only — this device) ---------- */
+function timeAgo(iso) {
+  if (!iso) return "";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" });
+}
+
+/* ---------- Local persistence (favorites + read state — this device) ---------- */
 const store = {
   get(key, fallback) {
     try {
@@ -454,7 +467,7 @@ function TopHeader({ title, subtitle }) {
   );
 }
 
-function Dashboard({ profile, members, onNav }) {
+function Dashboard({ profile, members, onNav, unreadCount = 0 }) {
   const total = members.length;
   const present = members.filter((m) => m.status === "present").length;
   const pct = total ? Math.round((present / total) * 100) : 0;
@@ -482,9 +495,22 @@ function Dashboard({ profile, members, onNav }) {
           <div style={{ fontFamily: "Lora, serif", fontSize: 23, color: C.ink, marginTop: 2 }}>{displayName}</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button
+            onClick={() => onNav("messages")} className="dvbc-tap"
+            style={{ position: "relative", width: 38, height: 38, borderRadius: "50%", background: C.lilacSoft, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          >
             <Bell size={16} color={C.plum} />
-          </div>
+            {unreadCount > 0 && (
+              <div style={{
+                position: "absolute", top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 999,
+                background: C.roseDeep, color: "#fff", fontSize: 9.5, fontWeight: 700,
+                display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                border: "2px solid #fff",
+              }}>
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </div>
+            )}
+          </button>
           <Badge />
         </div>
       </div>
@@ -792,6 +818,241 @@ function Library({ favorites, toggleFavorite }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function Messages({ posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen }) {
+  const [openPostId, setOpenPostId] = useState(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [commentDraft, setCommentDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  const openPost = (post) => {
+    setOpenPostId(post.id);
+    onMarkSeen(post.id);
+  };
+
+  const hasNewComments = (post) => {
+    const lastSeen = seenMap[post.id];
+    if (!lastSeen) return (post.comments || []).length > 0;
+    return (post.comments || []).some((c) => new Date(c.created_at) > new Date(lastSeen));
+  };
+
+  const submitNewPost = async () => {
+    if (!draft.trim() || posting) return;
+    setPosting(true);
+    await onSubmitPost(draft.trim());
+    setDraft("");
+    setPosting(false);
+    setComposerOpen(false);
+  };
+
+  const submitNewComment = async () => {
+    if (!commentDraft.trim() || !openPostId || posting) return;
+    setPosting(true);
+    await onSubmitComment(openPostId, commentDraft.trim());
+    setCommentDraft("");
+    setPosting(false);
+  };
+
+  const openPostData = posts.find((p) => p.id === openPostId);
+
+  if (openPostData) {
+    return (
+      <div style={{ paddingBottom: 110 }}>
+        <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setOpenPostId(null)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <ChevronLeft size={20} color={C.ink} />
+          </button>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>Post</div>
+        </div>
+
+        <div style={{ padding: "18px 24px 0" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+              background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+            }}>
+              {openPostData.author?.avatar_url
+                ? <img src={openPostData.author.avatar_url} alt={openPostData.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : (openPostData.author?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink }}>{openPostData.author?.name || "Unknown"}</div>
+              <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 1 }}>{timeAgo(openPostData.created_at)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.6, marginTop: 12, whiteSpace: "pre-line" }}>
+            {openPostData.content}
+          </div>
+        </div>
+
+        <div style={{ margin: "20px 24px 0" }}><Staff /></div>
+
+        <div style={{ padding: "16px 24px 0" }}>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+            {(openPostData.comments || []).length} {(openPostData.comments || []).length === 1 ? "Comment" : "Comments"}
+          </div>
+          {(openPostData.comments || []).length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "6px 0" }}>No comments yet — be the first to reply.</div>
+          )}
+          {(openPostData.comments || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map((c) => (
+            <div key={c.id} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "Lora, serif", fontWeight: 600, fontSize: 11,
+              }}>
+                {c.author?.avatar_url
+                  ? <img src={c.author.avatar_url} alt={c.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : (c.author?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>{c.author?.name || "Unknown"}</div>
+                  <div style={{ fontSize: 10.5, color: C.inkSoft }}>{timeAgo(c.created_at)}</div>
+                </div>
+                <div style={{ fontSize: 12.5, color: C.ink, marginTop: 2, lineHeight: 1.5 }}>{c.content}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
+          padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
+        }}>
+          <input
+            value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Write a comment…"
+            style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
+            onKeyDown={(e) => { if (e.key === "Enter") submitNewComment(); }}
+          />
+          <button
+            onClick={submitNewComment} disabled={!commentDraft.trim() || posting} className="dvbc-tap"
+            style={{
+              background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
+              border: "none", cursor: commentDraft.trim() ? "pointer" : "default", opacity: commentDraft.trim() ? 1 : 0.5, flexShrink: 0,
+            }}
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingBottom: 110 }}>
+      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={onBack} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+          <ChevronLeft size={20} color={C.ink} />
+        </button>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.ink }}>Messages</div>
+      </div>
+      <div style={{ margin: "14px 24px 0" }}><Staff /></div>
+
+      <div style={{ padding: "18px 24px 0" }}>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
+
+        {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+        {!loading && posts.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No posts yet.</div>
+        )}
+
+        {posts.map((post) => {
+          const commentCount = (post.comments || []).length;
+          const isNew = hasNewComments(post);
+          const authorName = post.author?.id === profile?.id ? "you" : (post.author?.name || "Unknown");
+          return (
+            <button
+              key={post.id} onClick={() => openPost(post)} className="dvbc-tap"
+              style={{
+                width: "100%", textAlign: "left", display: "flex", gap: 12, padding: 14,
+                background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, marginBottom: 12, cursor: "pointer",
+              }}
+            >
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+              }}>
+                {post.author?.avatar_url
+                  ? <img src={post.author.avatar_url} alt={post.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : (post.author?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ fontSize: 11, color: C.inkSoft }}>{timeAgo(post.created_at)}</div>
+                  {isNew && (
+                    <span style={{ background: C.roseBg, color: C.roseDeep, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                      New comments
+                    </span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: 13, color: C.ink, marginTop: 4, lineHeight: 1.5,
+                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                }}>
+                  {post.content}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                  <div style={{ fontSize: 11, color: C.inkSoft }}>Sent by {authorName}</div>
+                  <div style={{ fontSize: 11, color: C.inkSoft }}>{commentCount} comment{commentCount === 1 ? "" : "s"}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {isAdmin && (
+        <button
+          onClick={() => setComposerOpen(true)} className="dvbc-tap"
+          style={{
+            position: "fixed", bottom: 96, right: 24, width: 52, height: 52, borderRadius: "50%",
+            background: GRADIENT, border: "none", color: "#fff", fontSize: 26, fontWeight: 600,
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+            boxShadow: "0 8px 20px rgba(76,46,158,0.35)",
+          }}
+        >
+          +
+        </button>
+      )}
+
+      {composerOpen && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(35,26,59,0.45)", zIndex: 30,
+          display: "flex", alignItems: "flex-end",
+        }}>
+          <div style={{ background: "#fff", width: "100%", borderRadius: "20px 20px 0 0", padding: "20px 24px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New leadership post</div>
+            <textarea
+              value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Share an update with the chorale…"
+              style={{
+                width: "100%", minHeight: 110, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12,
+                padding: "12px 14px", fontSize: 13.5, outline: "none", color: C.ink, resize: "vertical", fontFamily: "inherit",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                onClick={submitNewPost} disabled={!draft.trim() || posting} className="dvbc-tap"
+                style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: draft.trim() ? "pointer" : "default", opacity: draft.trim() ? 1 : 0.6 }}
+              >
+                {posting ? "Posting…" : "Post"}
+              </button>
+              <button
+                onClick={() => { setComposerOpen(false); setDraft(""); }} className="dvbc-tap"
+                style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1262,8 +1523,12 @@ export default function App() {
   const [clockInError, setClockInError] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState("");
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [postSeenAt, setPostSeenAt] = useState(() => store.get("dvbc-post-seen", {}));
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
+  useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
 
   // Track auth session
   useEffect(() => {
@@ -1309,6 +1574,52 @@ export default function App() {
 
     return () => { active = false; supabase.removeChannel(channel); };
   }, [session]);
+
+  // Load + live-subscribe to leadership posts and their comments
+  const loadPosts = useCallback(async () => {
+    setLoadingPosts(true);
+    const { data } = await supabase
+      .from("posts")
+      .select("*, author:members!posts_author_id_fkey(id,name,avatar_url), comments:post_comments(*, author:members!post_comments_author_id_fkey(id,name,avatar_url))")
+      .order("created_at", { ascending: false });
+    setPosts(data || []);
+    setLoadingPosts(false);
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    loadPosts();
+
+    const channel = supabase
+      .channel("posts-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => loadPosts())
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => loadPosts())
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [session, loadPosts]);
+
+  const submitPost = useCallback(async (content) => {
+    if (!profile) return;
+    await supabase.from("posts").insert({ author_id: profile.id, content });
+    loadPosts();
+  }, [profile, loadPosts]);
+
+  const submitComment = useCallback(async (postId, content) => {
+    if (!profile) return;
+    await supabase.from("post_comments").insert({ post_id: postId, author_id: profile.id, content });
+    loadPosts();
+  }, [profile, loadPosts]);
+
+  const markPostSeen = useCallback((postId) => {
+    setPostSeenAt((prev) => ({ ...prev, [postId]: new Date().toISOString() }));
+  }, []);
+
+  const unreadPostCount = posts.filter((post) => {
+    const lastSeen = postSeenAt[post.id];
+    if (!lastSeen) return (post.comments || []).length > 0;
+    return (post.comments || []).some((c) => new Date(c.created_at) > new Date(lastSeen));
+  }).length;
 
   const toggleFavorite = useCallback((id) => {
     setFavorites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1421,7 +1732,7 @@ export default function App() {
         <PendingApproval profile={profile} onLogout={handleLogout} />
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "dashboard" && (
-        <Dashboard profile={profile} members={members} onNav={setScreen} />
+        <Dashboard profile={profile} members={members} onNav={setScreen} unreadCount={unreadPostCount} />
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "attendance" && (
         <Attendance
@@ -1434,6 +1745,12 @@ export default function App() {
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "library" && (
         <Library favorites={favorites} toggleFavorite={toggleFavorite} />
+      )}
+      {session && profile && (profile.approved || isAdmin) && screen === "messages" && (
+        <Messages
+          posts={posts} loading={loadingPosts} isAdmin={isAdmin} profile={profile} onBack={() => setScreen("dashboard")}
+          onSubmitPost={submitPost} onSubmitComment={submitComment} seenMap={postSeenAt} onMarkSeen={markPostSeen}
+        />
       )}
       {session && profile && (profile.approved || isAdmin) && screen === "profile" && (
         <Profile
