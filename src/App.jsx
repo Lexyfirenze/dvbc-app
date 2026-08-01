@@ -589,8 +589,6 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
     return matchesPart && matchesSearch;
   });
 
-  // Group into sections by broad voice part (Soprano/Alto/Tenor/Bass),
-  // each containing every part variant (e.g. "Soprano I" + "Soprano II"), sorted by name.
   const sectionOrder = ["Soprano", "Alto", "Tenor", "Bass"];
   const groupedSections = sectionOrder
     .map((section) => ({
@@ -601,7 +599,6 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
         .sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .filter((g) => g.rows.length > 0);
-  // Anything with a part that doesn't match a known section still shows up, grouped as "Other".
   const groupedNames = new Set(groupedSections.flatMap((g) => g.rows.map((m) => m.id)));
   const leftover = filtered.filter((m) => !groupedNames.has(m.id));
   if (leftover.length > 0) {
@@ -876,7 +873,6 @@ function Messages({
   const openPostData = posts.find((p) => p.id === openPostId);
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
 
-  // Typing-indicator broadcast channel for whichever chat is open (ephemeral — no table involved)
   useEffect(() => {
     if (!activeConversationId) { chatChannelRef.current = null; return; }
     const channel = supabase.channel(`typing:${activeConversationId}`);
@@ -895,7 +891,6 @@ function Messages({
     return () => { supabase.removeChannel(channel); chatChannelRef.current = null; setTypingUsers({}); };
   }, [activeConversationId, profile?.id]);
 
-  // Mark as read whenever a conversation is opened or new messages arrive while it's open
   useEffect(() => {
     if (activeConversationId) onMarkConversationRead(activeConversationId);
   }, [activeConversationId, activeConversation?.messages?.length, onMarkConversationRead]);
@@ -1817,7 +1812,6 @@ export default function App() {
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
   useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
 
-  // Track auth session
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -1827,7 +1821,6 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Load this user's own member profile once signed in
   useEffect(() => {
     if (!session) { setProfile(null); return; }
     supabase
@@ -1838,7 +1831,6 @@ export default function App() {
       .then(({ data }) => setProfile(data || null));
   }, [session]);
 
-  // Load + live-subscribe to the shared members list
   useEffect(() => {
     if (!session) return;
     let active = true;
@@ -1862,7 +1854,6 @@ export default function App() {
     return () => { active = false; supabase.removeChannel(channel); };
   }, [session]);
 
-  // Load + live-subscribe to leadership posts and their comments
   const loadPosts = useCallback(async () => {
     setLoadingPosts(true);
     const { data } = await supabase
@@ -1915,7 +1906,6 @@ export default function App() {
     return total + unread;
   }, 0);
 
-  // Load + live-subscribe to this member's chat conversations (Phase B)
   const loadConversations = useCallback(async () => {
     if (!profile) return;
     setLoadingConversations(true);
@@ -1967,13 +1957,6 @@ export default function App() {
     if (!isGroup && memberIds.length === 1) {
       const existing = conversations.find((c) =>
         !c.is_group &&
-        (c.participants || []).some((p) => p.me
-const createConversation = useCallback(async (memberIds, title, isGroup) => {
-    if (!profile) return;
-
-    if (!isGroup && memberIds.length === 1) {
-      const existing = conversations.find((c) =>
-        !c.is_group &&
         (c.participants || []).some((p) => p.member_id === memberIds[0])
       );
       if (existing) {
@@ -1999,176 +1982,4 @@ const createConversation = useCallback(async (memberIds, title, isGroup) => {
     setActiveConversationId(conv.id);
   }, [profile, conversations, loadConversations]);
 
-  const sendChatMessage = useCallback(async (conversationId, content) => {
-    if (!profile) return;
-    await supabase.from("chat_messages").insert({ conversation_id: conversationId, sender_id: profile.id, content });
-    await supabase
-      .from("conversation_participants")
-      .update({ last_read_at: new Date().toISOString() })
-      .eq("conversation_id", conversationId)
-      .eq("member_id", profile.id);
-  }, [profile]);
-
-  const markConversationRead = useCallback(async (conversationId) => {
-    if (!profile) return;
-    await supabase
-      .from("conversation_participants")
-      .update({ last_read_at: new Date().toISOString() })
-      .eq("conversation_id", conversationId)
-      .eq("member_id", profile.id);
-    setConversations((prev) => prev.map((c) => {
-      if (c.id !== conversationId) return c;
-      return {
-        ...c,
-        participants: (c.participants || []).map((p) =>
-          p.member_id === profile.id ? { ...p, last_read_at: new Date().toISOString() } : p
-        ),
-      };
-    }));
-  }, [profile]);
-
-  const openConversation = useCallback((id) => setActiveConversationId(id), []);
-  const closeConversation = useCallback(() => setActiveConversationId(null), []);
-
-  const cycleMemberStatus = useCallback(async (member) => {
-    const order = ["present", "absent", "excused"];
-    const next = order[(order.indexOf(member.status) + 1) % order.length];
-    await supabase.from("members").update({ status: next }).eq("id", member.id);
-  }, []);
-
-  const clockIn = useCallback(async () => {
-    if (!profile) return;
-    setClockingIn(true);
-    setClockInError("");
-    const { error } = await supabase
-      .from("members")
-      .update({ status: "present", clocked_in_at: new Date().toISOString() })
-      .eq("id", profile.id);
-    if (error) setClockInError(error.message || "Could not clock in. Please try again.");
-    setClockingIn(false);
-  }, [profile]);
-
-  const uploadAvatar = useCallback(async (file) => {
-    if (!profile) return;
-    setAvatarError("");
-    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
-      setAvatarError("Please choose a JPG, PNG, WEBP, or HEIC photo.");
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setAvatarError("Photo must be under 8MB.");
-      return;
-    }
-    setAvatarUploading(true);
-    try {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `${profile.id}-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      const { error: updateError } = await supabase
-        .from("members")
-        .update({ avatar_url: data.publicUrl })
-        .eq("id", profile.id);
-      if (updateError) throw updateError;
-      setProfile((prev) => (prev ? { ...prev, avatar_url: data.publicUrl } : prev));
-    } catch (err) {
-      setAvatarError(err.message || "Could not upload photo. Please try again.");
-    } finally {
-      setAvatarUploading(false);
-    }
-  }, [profile]);
-
-  const approveMember = useCallback(async (memberId) => {
-    await supabase.from("members").update({ approval_status: "approved" }).eq("id", memberId);
-  }, []);
-
-  const rejectMember = useCallback(async (memberId) => {
-    await supabase.from("members").update({ approval_status: "rejected" }).eq("id", memberId);
-  }, []);
-
-  const logout = useCallback(async () => {
-    await supabase.auth.signOut();
-  }, []);
-
-  const toggleFavorite = useCallback((id) => {
-    setFavorites((prev) => (prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]));
-  }, []);
-
-  if (session === undefined) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.parchment }}>
-        <div style={{ color: C.inkSoft, fontSize: 13 }}>Loading…</div>
-      </div>
-    );
-  }
-
-  const TAP_STYLES = `
-    .dvbc-tap { transition: opacity 0.15s ease, transform 0.15s ease; }
-    .dvbc-tap:active { opacity: 0.7; transform: scale(0.97); }
-    .dvbc-row:active { background: ${C.lilacSoft}; }
-  `;
-
-  if (!session) {
-    return (
-      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
-        <style>{TAP_STYLES}</style>
-        <LoginScreen onAuthed={() => {}} />
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.parchment }}>
-        <div style={{ color: C.inkSoft, fontSize: 13 }}>Loading your profile…</div>
-      </div>
-    );
-  }
-
-  if (profile.approval_status === "pending") {
-    return (
-      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
-        <style>{TAP_STYLES}</style>
-        <PendingApproval profile={profile} onLogout={logout} />
-      </div>
-    );
-  }
-
-  const isAdmin = !!profile.is_admin;
-  let content;
-  if (screen === "dashboard") content = <Dashboard profile={profile} members={members} onNav={setScreen} unreadCount={unreadPostCount + unreadChatCount} />;
-  else if (screen === "attendance") content = (
-    <Attendance members={members} loading={loadingMembers} onCycle={cycleMemberStatus} isAdmin={isAdmin}
-      profile={profile} onClockIn={clockIn} clockingIn={clockingIn} clockInError={clockInError} />
-  );
-  else if (screen === "library") content = <Library favorites={favorites} toggleFavorite={toggleFavorite} />;
-  else if (screen === "messages") content = (
-    <Messages posts={posts} loading={loadingPosts} isAdmin={isAdmin} profile={profile}
-      onBack={() => setScreen("dashboard")} onSubmitPost={submitPost} onSubmitComment={submitComment}
-      seenMap={postSeenAt} onMarkSeen={markPostSeen} members={members} conversations={conversations}
-      loadingConversations={loadingConversations} activeConversationId={activeConversationId}
-      onOpenConversation={openConversation} onCloseConversation={closeConversation}
-      onCreateConversation={createConversation} onSendChatMessage={sendChatMessage}
-      onMarkConversationRead={markConversationRead} />
-  );
-  else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
-  else if (screen === "privacy") content = <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />;
-  else if (screen === "about") content = <StaticPage title="About Us" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />;
-  else if (screen === "profile") content = (
-    <Profile profile={profile} members={members} onLogout={logout} isAdmin={isAdmin}
-      onApprove={approveMember} onReject={rejectMember} onUploadAvatar={uploadAvatar}
-      avatarUploading={avatarUploading} avatarError={avatarError}
-      onNavSettings={(nav) => setScreen(nav)} />
-  );
-
-  const showBottomNav = ["dashboard", "attendance", "library", "executives", "profile"].includes(screen);
-
-  return (
-    <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
-      <style>{TAP_STYLES}</style>
-      {content}
-      {showBottomNav && <BottomNav screen={screen} onNav={setScreen} />}
-    </div>
-  );
-    }
+ 
