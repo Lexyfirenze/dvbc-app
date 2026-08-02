@@ -1754,6 +1754,65 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
     </div>
   );
 }
+function SheetMusicViewer({ path, title, onClose }) {
+  const [signedUrl, setSignedUrl] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setSignedUrl(null);
+    setError("");
+    supabase.storage
+      .from("practice-sheets")
+      .createSignedUrl(path, 300) // link expires in 5 minutes
+      .then(({ data, error: signError }) => {
+        if (!active) return;
+        if (signError || !data?.signedUrl) {
+          setError("Couldn't load the sheet music. Please try again.");
+          return;
+        }
+        // #toolbar=0&navpanes=0 hides the browser PDF viewer's download/print controls
+        // (supported in Chrome/most Android WebViews; not a hard guarantee everywhere).
+        setSignedUrl(`${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0`);
+      });
+    return () => { active = false; };
+  }, [path]);
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 50, background: C.garnetDark, display: "flex", flexDirection: "column" }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <button onClick={onClose} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexShrink: 0, marginLeft: 12 }}>
+          <X size={20} color="#fff" />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, position: "relative" }}>
+        {!signedUrl && !error && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
+            Loading…
+          </div>
+        )}
+        {error && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#F3B4C4", fontSize: 13, padding: 24, textAlign: "center" }}>
+            {error}
+          </div>
+        )}
+        {signedUrl && (
+          <iframe
+            src={signedUrl}
+            title={title}
+            style={{ width: "100%", height: "100%", border: "none" }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PracticeLists({ isAdmin, profile }) {
   const myUserId = profile?.user_id;
   const [lists, setLists] = useState([]);
@@ -1777,6 +1836,7 @@ function PracticeLists({ isAdmin, profile }) {
   const [trackPdfFile, setTrackPdfFile] = useState(null);
   const [savingTrack, setSavingTrack] = useState(false);
   const [trackError, setTrackError] = useState("");
+  const [viewingSheet, setViewingSheet] = useState(null); // { path, title } | null
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1996,8 +2056,8 @@ function PracticeLists({ isAdmin, profile }) {
         const pdfPath = `${folder}${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
         const { error: pdfUploadError } = await supabase.storage.from("practice-sheets").upload(pdfPath, trackPdfFile);
         if (pdfUploadError) throw pdfUploadError;
-        const { data: pdfData } = supabase.storage.from("practice-sheets").getPublicUrl(pdfPath);
-        sheet_pdf_url = pdfData.publicUrl;
+        // practice-sheets is a private bucket — store the path and sign a URL on demand, not a public URL.
+        sheet_pdf_url = pdfPath;
       }
       const payload = { title: trackForm.title.trim(), composer: trackForm.composer.trim(), audio_url, sheet_pdf_url, practice_list_id: openListId };
       if (editingTrack) {
@@ -2037,9 +2097,12 @@ function PracticeLists({ isAdmin, profile }) {
         <audio ref={audioRef} src={currentTrack.audio_url} autoPlay />
         <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 22px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           {currentTrack.sheet_pdf_url ? (
-            <a href={currentTrack.sheet_pdf_url} target="_blank" rel="noopener noreferrer" className="dvbc-tap" style={{ color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              onClick={() => setViewingSheet({ path: currentTrack.sheet_pdf_url, title: currentTrack.title })}
+              className="dvbc-tap" style={{ background: "none", border: "none", color: "#fff", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: 0 }}
+            >
               <FileText size={18} color="#fff" />
-            </a>
+            </button>
           ) : <div style={{ width: 18 }} />}
           <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>{openList.title}</div>
           <button onClick={() => setPlayerExpanded(false)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
@@ -2106,11 +2169,12 @@ function PracticeLists({ isAdmin, profile }) {
             </button>
           </div>
         </div>
+        {viewingSheet && (
+          <SheetMusicViewer path={viewingSheet.path} title={viewingSheet.title} onClose={() => setViewingSheet(null)} />
+        )}
       </div>
     );
   }
-
-  /* ---------- Track list inside an open playlist ---------- */
   if (openList) {
     return (
       <div style={{ paddingBottom: currentTrack ? 190 : 110 }}>
@@ -2154,14 +2218,14 @@ function PracticeLists({ isAdmin, profile }) {
                   {t.composer && <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{t.composer}</div>}
                 </div>
                 {t.sheet_pdf_url && (
-                  <a
-                    href={t.sheet_pdf_url} target="_blank" rel="noopener noreferrer" className="dvbc-tap"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ width: 30, height: 30, borderRadius: "50%", background: C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: C.plum }}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setViewingSheet({ path: t.sheet_pdf_url, title: t.title }); }}
+                    className="dvbc-tap"
+                    style={{ width: 30, height: 30, borderRadius: "50%", background: C.lilacSoft, border: "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: C.plum, cursor: "pointer" }}
                     title="View sheet music"
                   >
                     <FileText size={14} color={C.plum} />
-                  </a>
+                  </button>
                 )}
                 {canManage(openList) && (
                   <div style={{ display: "flex", gap: 10, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
@@ -2229,6 +2293,9 @@ function PracticeLists({ isAdmin, profile }) {
               </button>
             </div>
           </div>
+        )}
+        {viewingSheet && (
+          <SheetMusicViewer path={viewingSheet.path} title={viewingSheet.title} onClose={() => setViewingSheet(null)} />
         )}
       </div>
     );
