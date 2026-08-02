@@ -1969,6 +1969,14 @@ function PracticeLists({ isAdmin, profile }) {
   const saveTrack = async () => {
     if (!trackForm.title.trim()) { setTrackError("Title is required."); return; }
     if (!editingTrack && !trackAudioFile) { setTrackError("Please choose an audio file."); return; }
+    if (trackAudioFile && !trackAudioFile.type.startsWith("audio/")) {
+      setTrackError(`"${trackAudioFile.name}" doesn't look like an audio file. Please choose an MP3, M4A, WAV, or similar.`);
+      return;
+    }
+    if (trackPdfFile && trackPdfFile.type !== "application/pdf" && !trackPdfFile.name.toLowerCase().endsWith(".pdf")) {
+      setTrackError(`"${trackPdfFile.name}" doesn't look like a PDF. Please choose a .pdf file.`);
+      return;
+    }
     setSavingTrack(true);
     setTrackError("");
     let audio_url = editingTrack?.audio_url || null;
@@ -2175,12 +2183,12 @@ function PracticeLists({ isAdmin, profile }) {
                 <input style={inputStyle} placeholder="Composer (optional)" value={trackForm.composer} onChange={(e) => setTrackForm({ ...trackForm, composer: e.target.value })} />
                 <div>
                   <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Audio</label>
-                  <input type="file" accept="audio/*" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+                  <input type="file" accept="*/*" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
                   {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>Leave empty to keep the existing audio.</div>}
                 </div>
                 <div>
                   <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Sheet music (PDF, optional)</label>
-                  <input type="file" accept="application/pdf" onChange={(e) => setTrackPdfFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
+                  <input type="file" accept="*/*" onChange={(e) => setTrackPdfFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
                   {editingTrack?.sheet_pdf_url && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>Leave empty to keep the existing PDF.</div>}
                 </div>
               </div>
