@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
-  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText } from "lucide-react";
+  ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
+  Repeat, RotateCcw, RotateCw, X, Plus, Gauge } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -1753,8 +1754,8 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
     </div>
   );
 }
-
-function PracticeLists({ isAdmin }) {
+function PracticeLists({ isAdmin, profile }) {
+  const myUserId = profile?.user_id;
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openListId, setOpenListId] = useState(null);
@@ -1762,6 +1763,7 @@ function PracticeLists({ isAdmin }) {
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
 
   const [showListForm, setShowListForm] = useState(false);
+  const [listContext, setListContext] = useState("group"); // "group" | "personal"
   const [editingList, setEditingList] = useState(null);
   const [listForm, setListForm] = useState({ title: "", voice_part: "All" });
   const [listCoverFile, setListCoverFile] = useState(null);
@@ -1780,7 +1782,11 @@ function PracticeLists({ isAdmin }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [playerExpanded, setPlayerExpanded] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [repeatIds, setRepeatIds] = useState(() => new Set());
   const audioRef = useRef(null);
+  const RATES = [1, 1.25, 1.5, 0.75];
 
   const loadLists = useCallback(async () => {
     setLoading(true);
@@ -1804,7 +1810,14 @@ function PracticeLists({ isAdmin }) {
     if (!audio) return;
     const onTime = () => setProgress(audio.currentTime);
     const onLoaded = () => setDuration(audio.duration || 0);
-    const onEnd = () => setIsPlaying(false);
+    const onEnd = () => {
+      if (currentTrackId && repeatIds.has(currentTrackId)) {
+        audio.currentTime = 0;
+        audio.play();
+      } else {
+        setIsPlaying(false);
+      }
+    };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onLoaded);
     audio.addEventListener("ended", onEnd);
@@ -1813,10 +1826,18 @@ function PracticeLists({ isAdmin }) {
       audio.removeEventListener("loadedmetadata", onLoaded);
       audio.removeEventListener("ended", onEnd);
     };
-  }, [currentTrackId]);
+  }, [currentTrackId, repeatIds]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = playbackRate;
+  }, [playbackRate, currentTrackId]);
 
   const openList = lists.find((l) => l.id === openListId);
-  const filteredLists = lists.filter((l) => filter === "All" || l.voice_part === "All" || l.voice_part.startsWith(filter));
+  const groupLists = lists.filter((l) => !l.owner_user_id);
+  const personalLists = lists.filter((l) => l.owner_user_id && l.owner_user_id === myUserId);
+  const filteredGroupLists = groupLists.filter((l) => filter === "All" || l.voice_part === "All" || l.voice_part.startsWith(filter));
+
+  const canManage = (list) => isAdmin || (list && list.owner_user_id === myUserId);
 
   const formatDuration = (secs) => {
     if (!secs || Number.isNaN(secs)) return "0:00";
@@ -1834,8 +1855,26 @@ function PracticeLists({ isAdmin }) {
     setCurrentTrackId(track.id);
     setProgress(0);
     setIsPlaying(true);
-    // Let the src update via render, then play once ready.
-    setTimeout(() => audioRef.current?.play(), 0);
+    setTimeout(() => { if (audioRef.current) { audioRef.current.playbackRate = playbackRate; audioRef.current.play(); } }, 0);
+  };
+
+  const skip = (secs) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = Math.min(Math.max(0, audio.currentTime + secs), duration || audio.currentTime + secs);
+  };
+
+  const cycleRate = () => {
+    const idx = RATES.indexOf(playbackRate);
+    setPlaybackRate(RATES[(idx + 1) % RATES.length]);
+  };
+
+  const toggleRepeat = (trackId) => {
+    setRepeatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(trackId)) next.delete(trackId); else next.add(trackId);
+      return next;
+    });
   };
 
   const seekTo = (e) => {
@@ -1858,6 +1897,7 @@ function PracticeLists({ isAdmin }) {
 
   const startEditList = (list) => {
     setEditingList(list);
+    setListContext(list.owner_user_id ? "personal" : "group");
     setListForm({ title: list.title || "", voice_part: list.voice_part || "All" });
     setListCoverFile(null);
     setShowListForm(true);
@@ -1869,15 +1909,21 @@ function PracticeLists({ isAdmin }) {
     setListError("");
     let cover_url = editingList?.cover_url || null;
     try {
+      const bucketFolder = listContext === "personal" ? `${myUserId}/` : "";
       if (listCoverFile) {
         const ext = (listCoverFile.name.split(".").pop() || "jpg").toLowerCase();
-        const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const path = `${bucketFolder}${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: uploadError } = await supabase.storage.from("practice-covers").upload(path, listCoverFile);
         if (uploadError) throw uploadError;
         const { data } = supabase.storage.from("practice-covers").getPublicUrl(path);
         cover_url = data.publicUrl;
       }
-      const payload = { title: listForm.title.trim(), voice_part: listForm.voice_part, cover_url };
+      const payload = {
+        title: listForm.title.trim(),
+        voice_part: listContext === "personal" ? "All" : listForm.voice_part,
+        cover_url,
+        owner_user_id: listContext === "personal" ? myUserId : null,
+      };
       if (editingList) {
         const { error } = await supabase.from("practice_lists").update(payload).eq("id", editingList.id);
         if (error) throw error;
@@ -1928,16 +1974,18 @@ function PracticeLists({ isAdmin }) {
     let audio_url = editingTrack?.audio_url || null;
     let sheet_pdf_url = editingTrack?.sheet_pdf_url || null;
     try {
+      const isPersonal = !!openList?.owner_user_id;
+      const folder = isPersonal ? `${myUserId}/` : "";
       if (trackAudioFile) {
         const ext = (trackAudioFile.name.split(".").pop() || "mp3").toLowerCase();
-        const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const path = `${folder}${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: uploadError } = await supabase.storage.from("practice-audio").upload(path, trackAudioFile);
         if (uploadError) throw uploadError;
         const { data } = supabase.storage.from("practice-audio").getPublicUrl(path);
         audio_url = data.publicUrl;
       }
       if (trackPdfFile) {
-        const pdfPath = `${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+        const pdfPath = `${folder}${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
         const { error: pdfUploadError } = await supabase.storage.from("practice-sheets").upload(pdfPath, trackPdfFile);
         if (pdfUploadError) throw pdfUploadError;
         const { data: pdfData } = supabase.storage.from("practice-sheets").getPublicUrl(pdfPath);
@@ -1963,7 +2011,7 @@ function PracticeLists({ isAdmin }) {
 
   const deleteTrack = async (track) => {
     if (!window.confirm(`Delete "${track.title}"?`)) return;
-    if (currentTrackId === track.id) { audioRef.current?.pause(); setIsPlaying(false); setCurrentTrackId(null); }
+    if (currentTrackId === track.id) { audioRef.current?.pause(); setIsPlaying(false); setCurrentTrackId(null); setPlayerExpanded(false); }
     await supabase.from("practice_tracks").delete().eq("id", track.id);
     loadLists();
   };
@@ -1973,6 +2021,88 @@ function PracticeLists({ isAdmin }) {
     padding: "12px 14px", fontSize: 13.5, width: "100%", outline: "none", color: C.ink,
   };
 
+  /* ---------- Full-screen player ---------- */
+  if (openList && playerExpanded && currentTrack) {
+    const isRepeating = repeatIds.has(currentTrack.id);
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 50, background: `linear-gradient(180deg, ${C.plum} 0%, ${C.garnetDark} 100%)`, display: "flex", flexDirection: "column" }}>
+        <audio ref={audioRef} src={currentTrack.audio_url} autoPlay />
+        <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 22px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {currentTrack.sheet_pdf_url ? (
+            <a href={currentTrack.sheet_pdf_url} target="_blank" rel="noopener noreferrer" className="dvbc-tap" style={{ color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+              <FileText size={18} color="#fff" />
+            </a>
+          ) : <div style={{ width: 18 }} />}
+          <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>{openList.title}</div>
+          <button onClick={() => setPlayerExpanded(false)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <X size={20} color="#fff" />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "24px 22px 0" }}>
+          {openList.tracks.map((t) => {
+            const active = t.id === currentTrack.id;
+            return (
+              <button
+                key={t.id} onClick={() => playTrack(t)} className="dvbc-tap"
+                style={{
+                  width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12,
+                  background: active ? "rgba(255,255,255,0.14)" : "transparent", border: "none", borderRadius: 14,
+                  padding: "14px 12px", marginBottom: 6, cursor: "pointer",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  {active && (isPlaying ? <Play size={13} color="#fff" fill="#fff" /> : <Pause size={13} color="rgba(255,255,255,0.6)" />)}
+                  <span style={{ color: active ? "#fff" : "rgba(255,255,255,0.75)", fontSize: 14.5, fontWeight: active ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t.title}
+                  </span>
+                </div>
+                <span onClick={(e) => { e.stopPropagation(); toggleRepeat(t.id); }} style={{ display: "flex" }}>
+                  <Repeat size={16} color={repeatIds.has(t.id) ? "#fff" : "rgba(255,255,255,0.35)"} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: "10px 26px calc(env(safe-area-inset-bottom, 0px) + 26px)" }}>
+          <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 19, marginBottom: 2 }}>{currentTrack.title}</div>
+          {currentTrack.composer && <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12.5, marginBottom: 18 }}>{currentTrack.composer}</div>}
+
+          <div onClick={seekTo} style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.22)", cursor: "pointer", position: "relative", marginTop: currentTrack.composer ? 0 : 18 }}>
+            <div style={{ height: "100%", borderRadius: 999, background: "#fff", width: `${duration ? (progress / duration) * 100 : 0}%` }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{formatDuration(progress)}</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>-{formatDuration(Math.max(0, duration - progress))}</div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20 }}>
+            <button onClick={cycleRate} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.75)" }}>
+              <Gauge size={16} color="rgba(255,255,255,0.75)" /> <span style={{ fontSize: 11.5, fontWeight: 700 }}>{playbackRate}x</span>
+            </button>
+            <button onClick={() => skip(-10)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <RotateCcw size={22} color="#fff" />
+            </button>
+            <button
+              onClick={() => playTrack(currentTrack)} className="dvbc-tap"
+              style={{ width: 62, height: 62, borderRadius: "50%", background: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+            >
+              {isPlaying ? <Pause size={24} color={C.garnet} fill={C.garnet} /> : <Play size={24} color={C.garnet} fill={C.garnet} style={{ marginLeft: 2 }} />}
+            </button>
+            <button onClick={() => skip(10)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <RotateCw size={22} color="#fff" />
+            </button>
+            <button onClick={() => toggleRepeat(currentTrack.id)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <Repeat size={18} color={isRepeating ? "#fff" : "rgba(255,255,255,0.4)"} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- Track list inside an open playlist ---------- */
   if (openList) {
     return (
       <div style={{ paddingBottom: currentTrack ? 190 : 110 }}>
@@ -1982,10 +2112,12 @@ function PracticeLists({ isAdmin }) {
           </button>
           <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>{openList.title}</div>
         </div>
-        <div style={{ padding: "6px 24px 0" }}><Pill>{openList.voice_part}</Pill></div>
+        <div style={{ padding: "6px 24px 0" }}>
+          <Pill>{openList.owner_user_id ? "Personal" : openList.voice_part}</Pill>
+        </div>
 
         <div style={{ padding: "18px 24px 0" }}>
-          {isAdmin && (
+          {canManage(openList) && (
             <button
               onClick={() => { setEditingTrack(null); setTrackForm({ title: "", composer: "" }); setShowTrackForm(true); }}
               className="dvbc-tap"
@@ -2002,8 +2134,11 @@ function PracticeLists({ isAdmin }) {
           {openList.tracks.map((t) => {
             const playing = currentTrackId === t.id && isPlaying;
             return (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
-                <button onClick={() => playTrack(t)} className="dvbc-tap" style={{ width: 34, height: 34, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              <div
+                key={t.id} onClick={() => { playTrack(t); setPlayerExpanded(true); }}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer" }}
+              >
+                <button onClick={(e) => { e.stopPropagation(); playTrack(t); }} className="dvbc-tap" style={{ width: 34, height: 34, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
                   {playing ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
                 </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2020,8 +2155,8 @@ function PracticeLists({ isAdmin }) {
                     <FileText size={14} color={C.plum} />
                   </a>
                 )}
-                {isAdmin && (
-                  <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+                {canManage(openList) && (
+                  <div style={{ display: "flex", gap: 10, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => startEditTrack(t)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Edit</button>
                     <button onClick={() => deleteTrack(t)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.roseDeep, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Delete</button>
                   </div>
@@ -2066,19 +2201,22 @@ function PracticeLists({ isAdmin }) {
           )}
         </div>
 
-        {currentTrack && (
-          <div style={{
-            position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
-            padding: "14px 24px calc(env(safe-area-inset-bottom, 0px) + 14px)",
-          }}>
+        {currentTrack && !playerExpanded && (
+          <div
+            onClick={() => setPlayerExpanded(true)}
+            style={{
+              position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
+              padding: "14px 24px calc(env(safe-area-inset-bottom, 0px) + 14px)", cursor: "pointer",
+            }}
+          >
             <audio ref={audioRef} src={currentTrack.audio_url} autoPlay />
             <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.title}</div>
-            <div onClick={seekTo} style={{ height: 6, borderRadius: 999, background: C.lilacSoft, cursor: "pointer", position: "relative" }}>
+            <div onClick={(e) => { e.stopPropagation(); seekTo(e); }} style={{ height: 6, borderRadius: 999, background: C.lilacSoft, cursor: "pointer", position: "relative" }}>
               <div style={{ height: "100%", borderRadius: 999, background: GRADIENT, width: `${duration ? (progress / duration) * 100 : 0}%` }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
               <div style={{ fontSize: 10.5, color: C.inkSoft }}>{formatDuration(progress)} / {formatDuration(duration)}</div>
-              <button onClick={() => playTrack(currentTrack)} className="dvbc-tap" style={{ width: 30, height: 30, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <button onClick={(e) => { e.stopPropagation(); playTrack(currentTrack); }} className="dvbc-tap" style={{ width: 30, height: 30, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 {isPlaying ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
               </button>
             </div>
@@ -2088,73 +2226,122 @@ function PracticeLists({ isAdmin }) {
     );
   }
 
+  /* ---------- Top-level: personal lists + group lists ---------- */
   return (
     <div style={{ paddingBottom: 110 }}>
-      <TopHeader title="Practice Lists" subtitle="Audio playlists by voice part" />
+      <TopHeader title="Practice Lists" subtitle="Personal & group playlists" />
 
-      <div style={{ display: "flex", gap: 8, padding: "14px 24px 4px", overflowX: "auto" }}>
-        {parts.map((p) => (
-          <Chip key={p} active={filter === p} onClick={() => setFilter(p)}>{p}</Chip>
-        ))}
+      <div style={{ padding: "18px 24px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Your Practice Lists</div>
+        </div>
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+          {personalLists.map((list) => (
+            <button
+              key={list.id} onClick={() => setOpenListId(list.id)} className="dvbc-tap"
+              style={{
+                width: 108, height: 108, borderRadius: 16, flexShrink: 0, border: "none", cursor: "pointer",
+                background: list.cover_url ? `url(${list.cover_url}) center/cover` : GRADIENT,
+                display: "flex", alignItems: "flex-end", padding: 10, position: "relative", overflow: "hidden",
+              }}
+            >
+              {!list.cover_url && (
+                <ListMusic size={18} color="rgba(255,255,255,0.5)" style={{ position: "absolute", top: 10, right: 10 }} />
+              )}
+              <span style={{ color: "#fff", fontSize: 12.5, fontWeight: 700, textShadow: "0 1px 4px rgba(0,0,0,0.4)", textAlign: "left" }}>{list.title}</span>
+            </button>
+          ))}
+          <button
+            onClick={() => { setEditingList(null); setListContext("personal"); setListForm({ title: "", voice_part: "All" }); setShowListForm(true); }}
+            className="dvbc-tap"
+            style={{
+              width: 108, height: 108, borderRadius: 16, flexShrink: 0, border: `1.6px dashed ${C.lilacLine}`, cursor: "pointer",
+              background: C.card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+          >
+            <Plus size={20} color={C.plum} />
+            <span style={{ fontSize: 11, color: C.inkSoft, fontWeight: 600 }}>New List</span>
+          </button>
+        </div>
+      </div>
+
+      <div style={{ padding: "22px 24px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Group Practice Lists</div>
+        <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 10, padding: "2px 6px" }}>
+          <select
+            value={filter} onChange={(e) => setFilter(e.target.value)}
+            style={{ border: "none", outline: "none", fontSize: 12.5, background: "transparent", color: C.ink, padding: "7px 2px" }}
+          >
+            {parts.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
       </div>
 
       <div style={{ padding: "14px 24px 0" }}>
         {isAdmin && (
           <button
-            onClick={() => { setEditingList(null); setListForm({ title: "", voice_part: "All" }); setShowListForm(true); }}
+            onClick={() => { setEditingList(null); setListContext("group"); setListForm({ title: "", voice_part: "All" }); setShowListForm(true); }}
             className="dvbc-tap"
             style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
           >
-            + Add List
+            + Add Group List
           </button>
         )}
 
         {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
-        {!loading && filteredLists.length === 0 && (
-          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No practice lists yet.</div>
+        {!loading && filteredGroupLists.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No group practice lists yet.</div>
         )}
 
-        {filteredLists.map((list) => (
-          <button
-            key={list.id} onClick={() => setOpenListId(list.id)} className="dvbc-tap"
-            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: 12, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, marginBottom: 10, cursor: "pointer" }}
-          >
-            <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {list.cover_url
-                ? <img src={list.cover_url} alt={list.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                : <ListMusic size={20} color={C.plum} />}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{list.title}</div>
-              <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 2 }}>{list.tracks.length} track{list.tracks.length === 1 ? "" : "s"}</div>
-            </div>
-            <Pill>{list.voice_part}</Pill>
-            {isAdmin && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                <span onClick={() => startEditList(list)} style={{ color: C.plum, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Edit</span>
-                <span onClick={() => deleteList(list)} style={{ color: C.roseDeep, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Delete</span>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {filteredGroupLists.map((list) => (
+            <button
+              key={list.id} onClick={() => setOpenListId(list.id)} className="dvbc-tap"
+              style={{
+                textAlign: "left", border: "none", cursor: "pointer", borderRadius: 16, overflow: "hidden",
+                height: 140, position: "relative",
+                background: list.cover_url ? `url(${list.cover_url}) center/cover` : GRADIENT,
+              }}
+            >
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(37,26,44,0.75) 0%, rgba(37,26,44,0.05) 55%, transparent 100%)" }} />
+              <div style={{ position: "absolute", left: 12, right: 12, bottom: 10 }}>
+                <div style={{ color: "#fff", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{list.title}</div>
+                <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 10.5, marginTop: 2 }}>{list.voice_part} · {list.tracks.length} track{list.tracks.length === 1 ? "" : "s"}</div>
               </div>
-            )}
-          </button>
-        ))}
+              <div style={{ position: "absolute", right: 10, bottom: 10, width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.9)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Play size={12} color={C.garnet} fill={C.garnet} />
+              </div>
+              {isAdmin && (
+                <div
+                  onClick={(e) => { e.stopPropagation(); startEditList(list); }}
+                  style={{ position: "absolute", top: 8, right: 8, background: "rgba(255,255,255,0.9)", borderRadius: 8, padding: "3px 8px", fontSize: 9.5, fontWeight: 700, color: C.plum }}
+                >
+                  Edit
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
 
         {showListForm && (
-          <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 6 }}>
+          <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 16 }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
-              {editingList ? "Edit List" : "Add List"}
+              {editingList ? "Edit List" : listContext === "personal" ? "New Personal List" : "New Group List"}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <input style={inputStyle} placeholder="List title" value={listForm.title} onChange={(e) => setListForm({ ...listForm, title: e.target.value })} />
-              <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
-                <select
-                  value={listForm.voice_part}
-                  onChange={(e) => setListForm({ ...listForm, voice_part: e.target.value })}
-                  style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
-                >
-                  <option value="All">All</option>
-                  {VOICE_PARTS.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
+              {listContext === "group" && (
+                <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                  <select
+                    value={listForm.voice_part}
+                    onChange={(e) => setListForm({ ...listForm, voice_part: e.target.value })}
+                    style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                  >
+                    <option value="All">All</option>
+                    {VOICE_PARTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              )}
               <input type="file" accept="image/*" onChange={(e) => setListCoverFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
             </div>
             {listError && (
@@ -2169,6 +2356,11 @@ function PracticeLists({ isAdmin }) {
               <button onClick={resetListForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
                 Cancel
               </button>
+              {editingList && canManage(editingList) && (
+                <button onClick={() => deleteList(editingList)} className="dvbc-tap" style={{ background: C.roseBg, color: C.roseDeep, fontWeight: 700, fontSize: 13, padding: "12px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}>
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -2558,7 +2750,7 @@ export default function App() {
       onMarkConversationRead={markConversationRead} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
-  else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} />;
+  else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
   else if (screen === "privacy") content = <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "about") content = <StaticPage title="About Us" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "profile") content = (
