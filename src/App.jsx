@@ -793,8 +793,10 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
   const [interest, setInterest] = useState([]);
   const [loadingInterest, setLoadingInterest] = useState(true);
   const [votingBusy, setVotingBusy] = useState(false);
+  const [votingError, setVotingError] = useState("");
   const [prefillBusy, setPrefillBusy] = useState(false);
   const [prefillError, setPrefillError] = useState("");
+  const [rosterError, setRosterError] = useState("");
 
   const loadInterest = useCallback(async () => {
     if (!selectedEventId) { setInterest([]); setLoadingInterest(false); return; }
@@ -823,9 +825,11 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
   const castVote = async (vote) => {
     if (!profile || votingBusy || !selectedEventId) return;
     setVotingBusy(true);
-    await supabase
+    setVotingError("");
+    const { error } = await supabase
       .from("event_interest")
       .upsert({ event_id: selectedEventId, member_id: profile.id, vote, voted_at: new Date().toISOString() }, { onConflict: "event_id,member_id" });
+    if (error) setVotingError(error.message || "Could not save your vote. Please try again.");
     setVotingBusy(false);
   };
 
@@ -890,7 +894,7 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
   const groupedSections = sectionOrder
     .map((section) => ({
       section,
-      label: `${section}s`,
+      label: section === "Bass" ? "Basses" : `${section}s`,
       rows: filtered
         .filter((m) => m.part.startsWith(section))
         .sort((a, b) => a.name.localeCompare(b.name)),
@@ -932,7 +936,13 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
     if (isAdmin) {
       return (
         <button
-          key={m.id} onClick={() => onCycle(m, selectedEventId, status)} className="dvbc-row"
+          key={m.id}
+          onClick={async () => {
+            setRosterError("");
+            const { error } = (await onCycle(m, selectedEventId, status)) || {};
+            if (error) setRosterError(error);
+          }}
+          className="dvbc-row"
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
         >
           {row}
@@ -987,7 +997,7 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
           const evPhase = getEventPhase(e);
           return (
             <button
-              key={e.id} onClick={() => setSelectedEventId(e.id)} className="dvbc-tap"
+              key={e.id} onClick={() => { setSelectedEventId(e.id); setVotingError(""); setRosterError(""); setPrefillError(""); }} className="dvbc-tap"
               style={{
                 flexShrink: 0, textAlign: "left", padding: "10px 14px", borderRadius: 14,
                 border: `1.4px solid ${active ? C.garnet : C.lilacLine}`,
@@ -1074,6 +1084,12 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
                         </button>
                       );
                     })}
+                  </div>
+                )}
+
+                {votingError && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 12 }}>
+                    <AlertCircle size={13} /> {votingError}
                   </div>
                 )}
 
@@ -1175,6 +1191,12 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
                   <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Excused</div>
                 </div>
               </div>
+
+              {isAdmin && rosterError && (
+                <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5 }}>
+                  <AlertCircle size={13} /> {rosterError}
+                </div>
+              )}
 
               <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
                 <Search size={15} color={C.inkSoft} />
@@ -3227,13 +3249,14 @@ export default function App() {
     const currentIndex = order.indexOf(currentStatus);
     if (currentIndex === order.length - 1) {
       // Cycling past "excused" clears the record (back to "not marked").
-      await supabase.from("attendance_records").delete().eq("member_id", member.id).eq("event_id", eventId);
-      return;
+      const { error } = await supabase.from("attendance_records").delete().eq("member_id", member.id).eq("event_id", eventId);
+      return { error: error?.message };
     }
     const next = order[currentIndex + 1];
-    await supabase
+    const { error } = await supabase
       .from("attendance_records")
       .upsert({ member_id: member.id, event_id: eventId, status: next }, { onConflict: "member_id,event_id" });
+    return { error: error?.message };
   }, []);
 
   const checkInToEvent = useCallback(async (eventId) => {
