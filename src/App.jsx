@@ -119,26 +119,50 @@ Our Mission: To inspire lives and celebrate the beauty of music through exceptio
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024; // 8MB
 
-/* ---------- Clock-in window: Sundays 2:00 PM - 3:30 PM, Africa/Lagos time (UTC+1, no DST) ---------- */
-function isClockInWindowOpen() {
-  const now = new Date();
-  const watMillis = now.getTime() + now.getTimezoneOffset() * 60000 + 60 * 60000;
-  const wat = new Date(watMillis);
-  const day = wat.getDay(); // 0 = Sunday
-  const totalMinutes = wat.getHours() * 60 + wat.getMinutes();
-  return day === 0 && totalMinutes >= 14 * 60 && totalMinutes <= 15 * 60 + 30;
+/* ---------- Event-based attendance helpers ---------- */
+// Check-in opens 15 minutes before an event's start_time and stays open until end_time.
+function isEventCheckInOpen(event) {
+  if (!event || !event.track_attendance) return false;
+  const now = Date.now();
+  const start = new Date(event.start_time).getTime() - 15 * 60000;
+  const end = new Date(event.end_time).getTime();
+  return now >= start && now <= end;
 }
 
-// The rehearsal date this week's poll and register apply to: today if it's
-// Sunday (Africa/Lagos), otherwise the coming Sunday. Matches the date the
-// save_weekly_attendance() cron archives against (Sundays, Africa/Lagos).
-function getCurrentRehearsalDate() {
+function getEventPhase(event) {
+  const now = Date.now();
+  const start = new Date(event.start_time).getTime();
+  const end = new Date(event.end_time).getTime();
+  if (now < start) return "upcoming";
+  if (now > end) return "past";
+  return "ongoing";
+}
+
+// "Today", "Tomorrow", or a short date, for event list headers.
+function formatEventDay(iso) {
+  const d = new Date(iso);
   const now = new Date();
-  const watMillis = now.getTime() + now.getTimezoneOffset() * 60000 + 60 * 60000;
-  const wat = new Date(watMillis);
-  const daysUntilSunday = (7 - wat.getDay()) % 7;
-  wat.setDate(wat.getDate() + daysUntilSunday);
-  return wat.toISOString().slice(0, 10); // YYYY-MM-DD
+  const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Tomorrow";
+  return d.toLocaleDateString("en-NG", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatEventTimeRange(event) {
+  const opts = { hour: "2-digit", minute: "2-digit" };
+  const start = new Date(event.start_time).toLocaleTimeString("en-NG", opts);
+  const end = new Date(event.end_time).toLocaleTimeString("en-NG", opts);
+  return `${formatEventDay(event.start_time)} · ${start} – ${end}`;
+}
+
+// <input type="datetime-local"> uses local wall-clock time with no timezone; this
+// converts an ISO string to that format for pre-filling edit forms.
+function toDatetimeLocalValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function formatClockTime(iso) {
@@ -480,25 +504,42 @@ function TopHeader({ title, subtitle }) {
   );
 }
 
-function Dashboard({ profile, members, onNav, unreadCount = 0 }) {
-  const total = members.length;
-  const present = members.filter((m) => m.status === "present").length;
-  const pct = total ? Math.round((present / total) * 100) : 0;
+function Dashboard({ profile, members, events, onNav, unreadCount = 0, onCheckIn, checkingIn, checkInError }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
   const displayName = profile?.name ? profile.name.split(" ")[0] : "Member";
 
-  const now = new Date();
-  let daysUntilRehearsal = (7 - now.getDay()) % 7;
-  if (daysUntilRehearsal === 0) {
-    const rehearsalTime = new Date(now);
-    rehearsalTime.setHours(14, 30, 0, 0);
-    if (now > rehearsalTime) daysUntilRehearsal = 7;
-  }
-  const rehearsalLabel =
-    daysUntilRehearsal === 0 ? "Today" :
-    daysUntilRehearsal === 1 ? "Tomorrow" :
-    `in ${daysUntilRehearsal} days`;
+  const [attendancePct, setAttendancePct] = useState(null);
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    supabase.from("attendance_records").select("status").eq("member_id", profile.id).not("event_id", "is", null)
+      .then(({ data }) => {
+        if (!active) return;
+        const rows = data || [];
+        setAttendancePct(rows.length ? Math.round((rows.filter((r) => r.status === "present").length / rows.length) * 100) : 0);
+      });
+    return () => { active = false; };
+  }, [profile?.id]);
+
+  // Nearest event that hasn't ended yet (ongoing takes priority over merely upcoming).
+  const now = Date.now();
+  const upcoming = (events || [])
+    .filter((e) => new Date(e.end_time).getTime() >= now)
+    .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  const nextEvent = upcoming[0] || null;
+  const phase = nextEvent ? getEventPhase(nextEvent) : null;
+  const checkInOpen = nextEvent ? isEventCheckInOpen(nextEvent) : false;
+
+  const [myEventRecord, setMyEventRecord] = useState(null);
+  useEffect(() => {
+    if (!profile?.id || !nextEvent?.id) { setMyEventRecord(null); return; }
+    let active = true;
+    supabase.from("attendance_records").select("status").eq("member_id", profile.id).eq("event_id", nextEvent.id).maybeSingle()
+      .then(({ data }) => { if (active) setMyEventRecord(data || null); });
+    return () => { active = false; };
+  }, [profile?.id, nextEvent?.id, checkingIn]);
+  const alreadyCheckedIn = myEventRecord?.status === "present";
 
   return (
     <div style={{ paddingBottom: 110 }}>
@@ -539,23 +580,47 @@ function Dashboard({ profile, members, onNav, unreadCount = 0 }) {
           </div>
         </div>
 
-        <div style={{ background: GRADIENT, borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative" }}>
-          <div style={{ position: "absolute", top: 18, right: 18, background: "rgba(255,255,255,0.16)", fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 999 }}>
-            {rehearsalLabel}
+        {nextEvent ? (
+          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ display: "block", width: "100%", textAlign: "left", background: GRADIENT, borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative", border: "none", cursor: "pointer" }}>
+            <div style={{ position: "absolute", top: 18, right: 18, background: "rgba(255,255,255,0.16)", fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 999 }}>
+              {phase === "ongoing" ? "Ongoing" : formatEventDay(nextEvent.start_time)}
+            </div>
+            <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Event</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 20, marginTop: 8 }}>{nextEvent.title}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+              <Clock size={13} /> {formatEventTimeRange(nextEvent)}
+            </div>
+            {nextEvent.location && (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                <MapPin size={13} /> {nextEvent.location}
+              </div>
+            )}
+            {nextEvent.track_attendance && (
+              <div
+                onClick={(e) => { e.stopPropagation(); if (checkInOpen && !alreadyCheckedIn && !checkingIn) onCheckIn(nextEvent.id); }}
+                className="dvbc-tap"
+                style={{
+                  marginTop: 14, textAlign: "center", fontWeight: 700, fontSize: 12.5, padding: 11, borderRadius: 12,
+                  background: alreadyCheckedIn ? "rgba(255,255,255,0.22)" : checkInOpen ? "#fff" : "rgba(255,255,255,0.14)",
+                  color: alreadyCheckedIn ? "#fff" : checkInOpen ? C.garnet : "rgba(255,255,255,0.6)",
+                }}
+              >
+                {alreadyCheckedIn ? "You're checked in ✓" : checkInOpen ? (checkingIn ? "Checking in…" : "Check In") : phase === "ongoing" ? "Tap Attendance to check in" : "Check-in opens closer to the event"}
+              </div>
+            )}
+            {checkInError && <div style={{ marginTop: 8, fontSize: 11, color: "#FBEAF1" }}>{checkInError}</div>}
+          </button>
+        ) : (
+          <div style={{ background: GRADIENT, borderRadius: 20, padding: 20, marginTop: 16, color: "#fff" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Event</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 8 }}>No upcoming events yet</div>
           </div>
-          <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Rehearsal</div>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 20, marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <Clock size={16} /> Sunday, 2:30 PM
-          </div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-            <MapPin size={13} /> St. Peter's Anglican Church, Ikenegbu, Owerri
-          </div>
-        </div>
+        )}
 
         <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
           <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>{pct}%</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Attendance</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Your Attendance</div>
           </button>
           <button onClick={() => onNav("library")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>6/8</div>
@@ -578,84 +643,242 @@ function Dashboard({ profile, members, onNav, unreadCount = 0 }) {
   );
 }
 
-function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, clockingIn, clockInError }) {
+function EventFormPanel({ initial, onCancel, onSave }) {
+  const [title, setTitle] = useState(initial?.title || "");
+  const [description, setDescription] = useState(initial?.description || "");
+  const [location, setLocation] = useState(initial?.location || "");
+  const [startTime, setStartTime] = useState(initial ? toDatetimeLocalValue(initial.start_time) : "");
+  const [endTime, setEndTime] = useState(initial ? toDatetimeLocalValue(initial.end_time) : "");
+  const [trackAttendance, setTrackAttendance] = useState(initial ? initial.track_attendance : true);
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!title.trim() || !startTime || !endTime) {
+      setError("Title, start time, and end time are required.");
+      return;
+    }
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    if (end <= start) {
+      setError("End time must be after start time.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      if (initial) {
+        const { error: err } = await onSave.update(initial.id, {
+          title: title.trim(), description: description.trim() || null, location: location.trim() || null,
+          start_time: start.toISOString(), end_time: end.toISOString(), track_attendance: trackAttendance,
+        });
+        if (err) throw new Error(err);
+      } else {
+        const weeks = Math.max(1, Math.min(12, Number(repeatWeeks) || 1));
+        for (let i = 0; i < weeks; i++) {
+          const s = new Date(start); s.setDate(s.getDate() + i * 7);
+          const e = new Date(end); e.setDate(e.getDate() + i * 7);
+          const { error: err } = await onSave.create({
+            title: title.trim(), description: description.trim() || null, location: location.trim() || null,
+            start_time: s.toISOString(), end_time: e.toISOString(), track_attendance: trackAttendance,
+          });
+          if (err) throw new Error(err);
+        }
+      }
+      onCancel();
+    } catch (err) {
+      setError(err.message || "Could not save event. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    width: "100%", border: `1.4px solid ${C.lilacLine}`, borderRadius: 10, padding: "10px 12px",
+    fontSize: 13, color: C.ink, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5, display: "block" };
+
+  return (
+    <div style={{ margin: "18px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{initial ? "Edit Event" : "New Event"}</div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Title</label>
+        <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Weekly Rehearsal" />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Location</label>
+        <input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="St. Peter's Anglican Church, Owerri" />
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Starts</label>
+          <input type="datetime-local" style={inputStyle} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Ends</label>
+          <input type="datetime-local" style={inputStyle} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        </div>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Description (optional)</label>
+        <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.ink, marginBottom: 12, cursor: "pointer" }}>
+        <input type="checkbox" checked={trackAttendance} onChange={(e) => setTrackAttendance(e.target.checked)} />
+        Enable attendance tracking (check-in + register) for this event
+      </label>
+      {!initial && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Repeat weekly</label>
+          <select style={inputStyle} value={repeatWeeks} onChange={(e) => setRepeatWeeks(e.target.value)}>
+            {[1, 2, 3, 4, 6, 8, 12].map((n) => (
+              <option key={n} value={n}>{n === 1 ? "Just this once" : `${n} weeks`}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 12 }}>
+          <AlertCircle size={13} /> {error}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={onCancel} className="dvbc-tap"
+          style={{ flex: 1, background: "#fff", color: C.inkSoft, fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: `1.4px solid ${C.lilacLine}`, cursor: "pointer" }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={submit} disabled={saving} className="dvbc-tap"
+          style={{ flex: 2, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
+        >
+          {saving ? "Saving…" : initial ? "Save Changes" : "Create Event"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
-  const [windowOpen, setWindowOpen] = useState(isClockInWindowOpen());
 
+  const sortedEvents = [...events].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  const [selectedEventId, setSelectedEventId] = useState(null);
   useEffect(() => {
-    const id = setInterval(() => setWindowOpen(isClockInWindowOpen()), 30000);
+    if (selectedEventId || sortedEvents.length === 0) return;
+    const now = Date.now();
+    const next = sortedEvents.find((e) => new Date(e.end_time).getTime() >= now) || sortedEvents[sortedEvents.length - 1];
+    setSelectedEventId(next.id);
+  }, [sortedEvents.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedEvent = events.find((e) => e.id === selectedEventId) || null;
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(id);
   }, []);
+  const checkInOpen = selectedEvent ? isEventCheckInOpen(selectedEvent) : false;
+  const phase = selectedEvent ? getEventPhase(selectedEvent) : null;
 
-  const rehearsalDate = getCurrentRehearsalDate();
-  const [availability, setAvailability] = useState([]);
-  const [loadingAvailability, setLoadingAvailability] = useState(true);
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+
+  /* -------- interest voting, scoped to the selected event -------- */
+  const [interest, setInterest] = useState([]);
+  const [loadingInterest, setLoadingInterest] = useState(true);
   const [votingBusy, setVotingBusy] = useState(false);
   const [prefillBusy, setPrefillBusy] = useState(false);
   const [prefillError, setPrefillError] = useState("");
 
-  const loadAvailability = useCallback(async () => {
-    setLoadingAvailability(true);
-    const { data } = await supabase
-      .from("rehearsal_availability")
-      .select("*")
-      .eq("rehearsal_date", rehearsalDate);
-    setAvailability(data || []);
-    setLoadingAvailability(false);
-  }, [rehearsalDate]);
+  const loadInterest = useCallback(async () => {
+    if (!selectedEventId) { setInterest([]); setLoadingInterest(false); return; }
+    setLoadingInterest(true);
+    const { data } = await supabase.from("event_interest").select("*").eq("event_id", selectedEventId);
+    setInterest(data || []);
+    setLoadingInterest(false);
+  }, [selectedEventId]);
 
   useEffect(() => {
-    loadAvailability();
+    loadInterest();
+    if (!selectedEventId) return;
     const channel = supabase
-      .channel(`availability-${rehearsalDate}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "rehearsal_availability", filter: `rehearsal_date=eq.${rehearsalDate}` }, () => loadAvailability())
+      .channel(`interest-${selectedEventId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_interest", filter: `event_id=eq.${selectedEventId}` }, () => loadInterest())
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [rehearsalDate, loadAvailability]);
+  }, [selectedEventId, loadInterest]);
 
-  const myVote = availability.find((v) => v.member_id === profile?.id)?.vote || null;
-  const votesByMember = Object.fromEntries(availability.map((v) => [v.member_id, v.vote]));
-  const availableCount = availability.filter((v) => v.vote === "available").length;
-  const unavailableCount = availability.filter((v) => v.vote === "unavailable").length;
-  const excusedRequestCount = availability.filter((v) => v.vote === "excused_request").length;
+  const myVote = interest.find((v) => v.member_id === profile?.id)?.vote || null;
+  const votesByMember = Object.fromEntries(interest.map((v) => [v.member_id, v.vote]));
+  const availableCount = interest.filter((v) => v.vote === "available").length;
+  const unavailableCount = interest.filter((v) => v.vote === "unavailable").length;
+  const excusedRequestCount = interest.filter((v) => v.vote === "excused_request").length;
 
   const castVote = async (vote) => {
-    if (!profile || votingBusy) return;
+    if (!profile || votingBusy || !selectedEventId) return;
     setVotingBusy(true);
     await supabase
-      .from("rehearsal_availability")
-      .upsert({ member_id: profile.id, rehearsal_date: rehearsalDate, vote, voted_at: new Date().toISOString() }, { onConflict: "member_id,rehearsal_date" });
+      .from("event_interest")
+      .upsert({ event_id: selectedEventId, member_id: profile.id, vote, voted_at: new Date().toISOString() }, { onConflict: "event_id,member_id" });
     setVotingBusy(false);
   };
 
+  /* -------- attendance records, scoped to the selected event -------- */
+  const [records, setRecords] = useState([]);
+  const [loadingRecords, setLoadingRecords] = useState(true);
+
+  const loadRecords = useCallback(async () => {
+    if (!selectedEventId) { setRecords([]); setLoadingRecords(false); return; }
+    setLoadingRecords(true);
+    const { data } = await supabase.from("attendance_records").select("*").eq("event_id", selectedEventId);
+    setRecords(data || []);
+    setLoadingRecords(false);
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    loadRecords();
+    if (!selectedEventId) return;
+    const channel = supabase
+      .channel(`attendance-${selectedEventId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance_records", filter: `event_id=eq.${selectedEventId}` }, () => loadRecords())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [selectedEventId, loadRecords]);
+
+  const statusByMember = Object.fromEntries(records.map((r) => [r.member_id, r.status]));
+  const present = records.filter((r) => r.status === "present").length;
+  const absent = records.filter((r) => r.status === "absent").length;
+  const excused = records.filter((r) => r.status === "excused").length;
+
+  const myStatus = statusByMember[profile?.id] || null;
+  const alreadyCheckedIn = myStatus === "present";
+
   const prefillRegisterFromPoll = async () => {
-    if (!isAdmin || prefillBusy) return;
-    if (!window.confirm("Set every member's status from today's poll votes? You can still adjust individual members afterward.")) return;
+    if (!isAdmin || prefillBusy || !selectedEventId) return;
+    if (!window.confirm("Set every member's status from this event's poll votes? You can still adjust individual members afterward.")) return;
     setPrefillBusy(true);
     setPrefillError("");
     const voteToStatus = { available: "present", unavailable: "absent", excused_request: "excused" };
     try {
-      await Promise.all(
-        members.map((m) => {
-          const status = voteToStatus[votesByMember[m.id]] || "absent";
-          return supabase.from("members").update({ status }).eq("id", m.id);
-        })
-      );
+      const rows = members
+        .filter((m) => votesByMember[m.id])
+        .map((m) => ({ member_id: m.id, event_id: selectedEventId, status: voteToStatus[votesByMember[m.id]] }));
+      if (rows.length) {
+        const { error } = await supabase.from("attendance_records").upsert(rows, { onConflict: "member_id,event_id" });
+        if (error) throw error;
+      }
     } catch (err) {
       setPrefillError(err.message || "Could not update everyone. Please try again.");
     } finally {
       setPrefillBusy(false);
     }
   };
-
-  const myMember = members.find((m) => m.user_id === profile?.user_id);
-  const alreadyClockedIn = !!myMember?.clocked_in_at && myMember?.status === "present";
-
-  const present = members.filter((m) => m.status === "present").length;
-  const absent = members.filter((m) => m.status === "absent").length;
-  const excused = members.filter((m) => m.status === "excused").length;
 
   const filtered = members.filter((m) => {
     const matchesPart = filter === "All" || m.part.startsWith(filter);
@@ -680,6 +903,8 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
   }
 
   const renderMemberRow = (m) => {
+    const status = statusByMember[m.id] || null;
+    const record = records.find((r) => r.member_id === m.id);
     const row = (
       <>
         <div style={{
@@ -694,20 +919,12 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
           <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
-          {m.clocked_in_at && (
-            <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Clocked in {formatClockTime(m.clocked_in_at)}</div>
+          {status === "present" && record?.created_at && (
+            <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Checked in {formatClockTime(record.created_at)}</div>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Pill tone={m.status}>{m.status}</Pill>
-          {m.remark && (
-            <span style={{
-              background: C.amberBg, color: C.amberText, fontSize: 10, fontWeight: 700,
-              padding: "5px 9px", borderRadius: 999, whiteSpace: "nowrap",
-            }}>
-              Late
-            </span>
-          )}
+          <Pill tone={status || "gold"}>{status || "not marked"}</Pill>
         </div>
       </>
     );
@@ -715,7 +932,7 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
     if (isAdmin) {
       return (
         <button
-          key={m.id} onClick={() => onCycle(m)} className="dvbc-row"
+          key={m.id} onClick={() => onCycle(m, selectedEventId, status)} className="dvbc-row"
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
         >
           {row}
@@ -737,172 +954,266 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
     <div style={{ paddingBottom: 110 }}>
       <TopHeader
         title="Attendance"
-        subtitle={isAdmin ? "Shared live sheet · Tap a member to change status" : "Shared live sheet · Updated by section leaders"}
+        subtitle={isAdmin ? "Tap an event, then tap a member to change status" : "Vote, check in, and view the register per event"}
       />
 
-      <div style={{ margin: "18px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Will you be at rehearsal this Sunday?</div>
-        <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 14 }}>
-          Voting is visible to everyone and helps section leaders plan the register.
-        </div>
-
-        {!isAdmin && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            {[
-              { key: "available", label: "Available", tone: "present" },
-              { key: "unavailable", label: "Unavailable", tone: "absent" },
-              { key: "excused_request", label: "Request Excusal", tone: "excused" },
-            ].map((opt) => {
-              const active = myVote === opt.key;
-              const toneColor = opt.tone === "present" ? C.sage : opt.tone === "absent" ? C.roseDeep : C.amberText;
-              return (
-                <button
-                  key={opt.key} onClick={() => castVote(opt.key)} disabled={votingBusy} className="dvbc-tap"
-                  style={{
-                    flex: 1, padding: "10px 6px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
-                    border: `1.4px solid ${active ? toneColor : C.lilacLine}`,
-                    background: active ? toneColor : "#fff", color: active ? "#fff" : C.inkSoft,
-                    cursor: votingBusy ? "default" : "pointer",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {loadingAvailability ? (
-          <div style={{ fontSize: 12, color: C.inkSoft }}>Loading votes…</div>
-        ) : (
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1, textAlign: "center", background: C.sageBg, borderRadius: 12, padding: "8px 4px" }}>
-              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.sage }}>{availableCount}</div>
-              <div style={{ fontSize: 9.5, color: C.sage, textTransform: "uppercase", letterSpacing: 0.4 }}>Available</div>
-            </div>
-            <div style={{ flex: 1, textAlign: "center", background: C.roseBg, borderRadius: 12, padding: "8px 4px" }}>
-              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.roseDeep }}>{unavailableCount}</div>
-              <div style={{ fontSize: 9.5, color: C.roseDeep, textTransform: "uppercase", letterSpacing: 0.4 }}>Unavailable</div>
-            </div>
-            <div style={{ flex: 1, textAlign: "center", background: C.amberBg, borderRadius: 12, padding: "8px 4px" }}>
-              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.amberText }}>{excusedRequestCount}</div>
-              <div style={{ fontSize: 9.5, color: C.amberText, textTransform: "uppercase", letterSpacing: 0.4 }}>Excusal requested</div>
-            </div>
-          </div>
-        )}
-
-        {isAdmin && (
-          <>
-            {prefillError && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 12 }}>
-                <AlertCircle size={13} /> {prefillError}
-              </div>
-            )}
-            <button
-              onClick={prefillRegisterFromPoll} disabled={prefillBusy} className="dvbc-tap"
-              style={{
-                width: "100%", marginTop: 14, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5,
-                padding: 12, borderRadius: 12, border: "none", cursor: prefillBusy ? "default" : "pointer", opacity: prefillBusy ? 0.8 : 1,
-              }}
-            >
-              {prefillBusy ? "Setting register…" : "Set Register From Poll"}
-            </button>
-            <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 6, textAlign: "center" }}>
-              Sets everyone's status below from their vote — you can still adjust individual members after.
-            </div>
-          </>
-        )}
-      </div>
-
-      {!isAdmin && (
-        <div style={{ margin: "18px 24px 0", background: alreadyClockedIn ? C.sageBg : C.card, border: `1.4px solid ${alreadyClockedIn ? C.sage : C.lilacLine}`, borderRadius: 18, padding: 18 }}>
-          {alreadyClockedIn ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <CheckSquare size={17} color={C.sage} />
-              </div>
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.sage }}>You're clocked in</div>
-                <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 2 }}>Arrived at {formatClockTime(myMember.clocked_in_at)}</div>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Rehearsal Clock-In</div>
-              <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>
-                {windowOpen
-                  ? "Tap below to mark your arrival for today's rehearsal."
-                  : "Opens Sundays 2:00 PM – 3:30 PM, around rehearsal time."}
-              </div>
-              {clockInError && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 10 }}>
-                  <AlertCircle size={13} /> {clockInError}
-                </div>
-              )}
-              <button
-                onClick={onClockIn} disabled={!windowOpen || clockingIn} className="dvbc-tap"
-                style={{
-                  width: "100%", background: windowOpen ? GRADIENT : C.lilacSoft, color: windowOpen ? "#fff" : "#B8ADC0",
-                  fontWeight: 700, fontSize: 13.5, padding: 13, borderRadius: 12, border: "none",
-                  cursor: windowOpen && !clockingIn ? "pointer" : "default",
-                }}
-              >
-                {clockingIn ? "Clocking in…" : "Clock In"}
-              </button>
-            </>
-          )}
+      {isAdmin && (
+        <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={() => { setEditingEvent(null); setShowEventForm(true); }} className="dvbc-tap"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
+          >
+            <Plus size={14} /> New Event
+          </button>
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, padding: "16px 24px 0" }}>
-        <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.sage }}>{present}</div>
-          <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Present</div>
-        </div>
-        <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.roseDeep }}>{absent}</div>
-          <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Absent</div>
-        </div>
-        <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.amberText }}>{excused}</div>
-          <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Excused</div>
-        </div>
-      </div>
-
-      <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
-        <Search size={15} color={C.inkSoft} />
-        <input
-          value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search members…"
-          style={{ border: "none", outline: "none", fontSize: 13, flex: 1, background: "transparent", color: C.ink }}
+      {showEventForm && (
+        <EventFormPanel
+          initial={editingEvent}
+          onCancel={() => { setShowEventForm(false); setEditingEvent(null); }}
+          onSave={{ create: onCreateEvent, update: onUpdateEvent }}
         />
+      )}
+
+      {/* Event picker */}
+      <div style={{ display: "flex", gap: 8, padding: "16px 24px 0", overflowX: "auto" }}>
+        {loadingEvents && <div style={{ fontSize: 12, color: C.inkSoft }}>Loading events…</div>}
+        {!loadingEvents && sortedEvents.length === 0 && (
+          <div style={{ fontSize: 12, color: C.inkSoft }}>No events yet{isAdmin ? " — create one above." : "."}</div>
+        )}
+        {sortedEvents.map((e) => {
+          const active = e.id === selectedEventId;
+          const evPhase = getEventPhase(e);
+          return (
+            <button
+              key={e.id} onClick={() => setSelectedEventId(e.id)} className="dvbc-tap"
+              style={{
+                flexShrink: 0, textAlign: "left", padding: "10px 14px", borderRadius: 14,
+                border: `1.4px solid ${active ? C.garnet : C.lilacLine}`,
+                background: active ? GRADIENT : "#fff", cursor: "pointer", minWidth: 150,
+              }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: active ? "#fff" : C.ink }}>{e.title}</div>
+              <div style={{ fontSize: 10.5, color: active ? "rgba(255,255,255,0.85)" : C.inkSoft, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                {evPhase === "ongoing" && (
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#fff" : C.sage, display: "inline-block" }} />
+                )}
+                {formatEventDay(e.start_time)}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      <div style={{ display: "flex", gap: 8, padding: "14px 24px 4px", overflowX: "auto" }}>
-        {parts.map((p) => (
-          <Chip key={p} active={filter === p} onClick={() => setFilter(p)}>{p}</Chip>
-        ))}
-      </div>
-
-      <div style={{ padding: "6px 24px 0" }}>
-        {loading && (
-          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading members…</div>
-        )}
-        {!loading && filtered.length === 0 && (
-          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No members match.</div>
-        )}
-        {groupedSections.map((g, i) => (
-          <div key={g.section} style={{ marginTop: i === 0 ? 0 : 22 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>{g.label}</div>
-              <div style={{ fontSize: 12, color: C.inkSoft }}>({g.rows.length})</div>
+      {selectedEvent && (
+        <>
+          <div style={{ margin: "16px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+              <div>
+                <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>{selectedEvent.title}</div>
+                <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Clock size={12} /> {formatEventTimeRange(selectedEvent)}
+                </div>
+                {selectedEvent.location && (
+                  <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                    <MapPin size={12} /> {selectedEvent.location}
+                  </div>
+                )}
+                {selectedEvent.description && (
+                  <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 6, lineHeight: 1.5 }}>{selectedEvent.description}</div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+                {phase === "ongoing" && <Pill tone="present">Ongoing</Pill>}
+                {phase === "past" && <Pill tone="gold">Past</Pill>}
+                {isAdmin && (
+                  <button
+                    onClick={() => { setEditingEvent(selectedEvent); setShowEventForm(true); }} className="dvbc-tap"
+                    style={{ fontSize: 11, fontWeight: 700, color: C.plum, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             </div>
-            {g.rows.map((m) => renderMemberRow(m))}
           </div>
-        ))}
-      </div>
-      <div style={{ textAlign: "center", fontSize: 10.5, color: C.inkSoft, opacity: 0.7, padding: "14px 0 0" }}>
-        {isAdmin ? "Shared with every chorister, live" : "Only section leaders can update attendance"}
-      </div>
+
+          {!selectedEvent.track_attendance ? (
+            <div style={{ margin: "16px 24px 0", fontSize: 11.5, color: C.inkSoft, textAlign: "center" }}>
+              Attendance tracking is off for this event.
+            </div>
+          ) : (
+            <>
+              <div style={{ margin: "16px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Will you be there?</div>
+                <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 14 }}>
+                  Voting is visible to everyone and helps section leaders plan the register.
+                </div>
+
+                {!isAdmin && phase !== "past" && (
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {[
+                      { key: "available", label: "Available", tone: "present" },
+                      { key: "unavailable", label: "Unavailable", tone: "absent" },
+                      { key: "excused_request", label: "Request Excusal", tone: "excused" },
+                    ].map((opt) => {
+                      const active = myVote === opt.key;
+                      const toneColor = opt.tone === "present" ? C.sage : opt.tone === "absent" ? C.roseDeep : C.amberText;
+                      return (
+                        <button
+                          key={opt.key} onClick={() => castVote(opt.key)} disabled={votingBusy} className="dvbc-tap"
+                          style={{
+                            flex: 1, padding: "10px 6px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
+                            border: `1.4px solid ${active ? toneColor : C.lilacLine}`,
+                            background: active ? toneColor : "#fff", color: active ? "#fff" : C.inkSoft,
+                            cursor: votingBusy ? "default" : "pointer",
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {loadingInterest ? (
+                  <div style={{ fontSize: 12, color: C.inkSoft }}>Loading votes…</div>
+                ) : (
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ flex: 1, textAlign: "center", background: C.sageBg, borderRadius: 12, padding: "8px 4px" }}>
+                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.sage }}>{availableCount}</div>
+                      <div style={{ fontSize: 9.5, color: C.sage, textTransform: "uppercase", letterSpacing: 0.4 }}>Available</div>
+                    </div>
+                    <div style={{ flex: 1, textAlign: "center", background: C.roseBg, borderRadius: 12, padding: "8px 4px" }}>
+                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.roseDeep }}>{unavailableCount}</div>
+                      <div style={{ fontSize: 9.5, color: C.roseDeep, textTransform: "uppercase", letterSpacing: 0.4 }}>Unavailable</div>
+                    </div>
+                    <div style={{ flex: 1, textAlign: "center", background: C.amberBg, borderRadius: 12, padding: "8px 4px" }}>
+                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.amberText }}>{excusedRequestCount}</div>
+                      <div style={{ fontSize: 9.5, color: C.amberText, textTransform: "uppercase", letterSpacing: 0.4 }}>Excusal requested</div>
+                    </div>
+                  </div>
+                )}
+
+                {isAdmin && (
+                  <>
+                    {prefillError && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 12 }}>
+                        <AlertCircle size={13} /> {prefillError}
+                      </div>
+                    )}
+                    <button
+                      onClick={prefillRegisterFromPoll} disabled={prefillBusy} className="dvbc-tap"
+                      style={{
+                        width: "100%", marginTop: 14, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5,
+                        padding: 12, borderRadius: 12, border: "none", cursor: prefillBusy ? "default" : "pointer", opacity: prefillBusy ? 0.8 : 1,
+                      }}
+                    >
+                      {prefillBusy ? "Setting register…" : "Set Register From Poll"}
+                    </button>
+                    <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 6, textAlign: "center" }}>
+                      Sets each member's status below from their vote — you can still adjust individuals after.
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {!isAdmin && (
+                <div style={{ margin: "18px 24px 0", background: alreadyCheckedIn ? C.sageBg : C.card, border: `1.4px solid ${alreadyCheckedIn ? C.sage : C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+                  {alreadyCheckedIn ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <CheckSquare size={17} color={C.sage} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: C.sage }}>You're checked in</div>
+                        <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 2 }}>Marked present for {selectedEvent.title}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Check-In</div>
+                      <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>
+                        {phase === "past"
+                          ? "This event has ended."
+                          : checkInOpen
+                          ? "Tap below to mark your arrival."
+                          : `Opens 15 minutes before start, on ${formatEventTimeRange(selectedEvent)}.`}
+                      </div>
+                      {checkInError && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 10 }}>
+                          <AlertCircle size={13} /> {checkInError}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => onCheckIn(selectedEventId)} disabled={!checkInOpen || checkingIn} className="dvbc-tap"
+                        style={{
+                          width: "100%", background: checkInOpen ? GRADIENT : C.lilacSoft, color: checkInOpen ? "#fff" : "#B8ADC0",
+                          fontWeight: 700, fontSize: 13.5, padding: 13, borderRadius: 12, border: "none",
+                          cursor: checkInOpen && !checkingIn ? "pointer" : "default",
+                        }}
+                      >
+                        {checkingIn ? "Checking in…" : "Check In"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10, padding: "16px 24px 0" }}>
+                <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
+                  <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.sage }}>{present}</div>
+                  <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Present</div>
+                </div>
+                <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
+                  <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.roseDeep }}>{absent}</div>
+                  <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Absent</div>
+                </div>
+                <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
+                  <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.amberText }}>{excused}</div>
+                  <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Excused</div>
+                </div>
+              </div>
+
+              <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
+                <Search size={15} color={C.inkSoft} />
+                <input
+                  value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search members…"
+                  style={{ border: "none", outline: "none", fontSize: 13, flex: 1, background: "transparent", color: C.ink }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 8, padding: "14px 24px 4px", overflowX: "auto" }}>
+                {parts.map((p) => (
+                  <Chip key={p} active={filter === p} onClick={() => setFilter(p)}>{p}</Chip>
+                ))}
+              </div>
+
+              <div style={{ padding: "6px 24px 0" }}>
+                {(loading || loadingRecords) && (
+                  <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading register…</div>
+                )}
+                {!loading && !loadingRecords && filtered.length === 0 && (
+                  <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No members match.</div>
+                )}
+                {!loading && !loadingRecords && groupedSections.map((g, i) => (
+                  <div key={g.section} style={{ marginTop: i === 0 ? 0 : 22 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>{g.label}</div>
+                      <div style={{ fontSize: 12, color: C.inkSoft }}>({g.rows.length})</div>
+                    </div>
+                    {g.rows.map((m) => renderMemberRow(m))}
+                  </div>
+                ))}
+              </div>
+              <div style={{ textAlign: "center", fontSize: 10.5, color: C.inkSoft, opacity: 0.7, padding: "14px 0 0" }}>
+                {isAdmin ? "Shared with every chorister, live" : "Only section leaders can update attendance"}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1772,7 +2083,6 @@ function StaticPage({ title, content, onBack }) {
 }
 
 function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onUploadAvatar, avatarUploading, avatarError, onNavSettings }) {
-  const present = members.filter((m) => m.status === "present").length;
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => m.approval_status === "pending");
 
@@ -1784,6 +2094,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
       .from("attendance_records")
       .select("status")
       .eq("member_id", profile.id)
+      .not("event_id", "is", null)
       .then(({ data }) => {
         if (!active) return;
         const rows = data || [];
@@ -1791,6 +2102,20 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
       });
     return () => { active = false; };
   }, [profile?.id]);
+
+  // "Present" count for the nearest event that hasn't ended yet.
+  const [presentNow, setPresentNow] = useState(null);
+  useEffect(() => {
+    let active = true;
+    supabase.from("events").select("id").gte("end_time", new Date().toISOString()).order("start_time").limit(1)
+      .then(({ data }) => {
+        const eventId = data?.[0]?.id;
+        if (!eventId) { if (active) setPresentNow(0); return; }
+        supabase.from("attendance_records").select("status", { count: "exact" }).eq("event_id", eventId).eq("status", "present")
+          .then(({ count }) => { if (active) setPresentNow(count || 0); });
+      });
+    return () => { active = false; };
+  }, []);
 
   return (
     <div style={{ paddingBottom: 110 }}>
@@ -1838,8 +2163,8 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Registered members</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{present}</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present today</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "—" : presentNow}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present, next event</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
@@ -2656,8 +2981,6 @@ export default function App() {
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [favorites, setFavorites] = useState(() => store.get("dvbc-favorites", []));
-  const [clockingIn, setClockingIn] = useState(false);
-  const [clockInError, setClockInError] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState("");
   const [posts, setPosts] = useState([]);
@@ -2666,6 +2989,10 @@ export default function App() {
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkInError, setCheckInError] = useState("");
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
   useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
@@ -2704,6 +3031,31 @@ export default function App() {
           if (payload.eventType === "INSERT") return [...prev, payload.new].sort((a, b) => a.name.localeCompare(b.name));
           if (payload.eventType === "UPDATE") return prev.map((m) => (m.id === payload.new.id ? payload.new : m));
           if (payload.eventType === "DELETE") return prev.filter((m) => m.id !== payload.old.id);
+          return prev;
+        });
+      })
+      .subscribe();
+
+    return () => { active = false; supabase.removeChannel(channel); };
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    setLoadingEvents(true);
+    supabase.from("events").select("*").order("start_time").then(({ data }) => {
+      if (active) { setEvents(data || []); setLoadingEvents(false); }
+    });
+
+    const channel = supabase
+      .channel("events-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, (payload) => {
+        setEvents((prev) => {
+          if (payload.eventType === "INSERT") {
+            return [...prev, payload.new].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+          }
+          if (payload.eventType === "UPDATE") return prev.map((e) => (e.id === payload.new.id ? payload.new : e));
+          if (payload.eventType === "DELETE") return prev.filter((e) => e.id !== payload.old.id);
           return prev;
         });
       })
@@ -2869,23 +3221,42 @@ export default function App() {
   const openConversation = useCallback((id) => setActiveConversationId(id), []);
   const closeConversation = useCallback(() => setActiveConversationId(null), []);
 
-  const cycleMemberStatus = useCallback(async (member) => {
+  // Cycle a member's recorded status (present -> absent -> excused -> unmarked) for one event.
+  const cycleEventAttendance = useCallback(async (member, eventId, currentStatus) => {
     const order = ["present", "absent", "excused"];
-    const next = order[(order.indexOf(member.status) + 1) % order.length];
-    await supabase.from("members").update({ status: next }).eq("id", member.id);
+    const currentIndex = order.indexOf(currentStatus);
+    if (currentIndex === order.length - 1) {
+      // Cycling past "excused" clears the record (back to "not marked").
+      await supabase.from("attendance_records").delete().eq("member_id", member.id).eq("event_id", eventId);
+      return;
+    }
+    const next = order[currentIndex + 1];
+    await supabase
+      .from("attendance_records")
+      .upsert({ member_id: member.id, event_id: eventId, status: next }, { onConflict: "member_id,event_id" });
   }, []);
 
-  const clockIn = useCallback(async () => {
+  const checkInToEvent = useCallback(async (eventId) => {
     if (!profile) return;
-    setClockingIn(true);
-    setClockInError("");
+    setCheckingIn(true);
+    setCheckInError("");
     const { error } = await supabase
-      .from("members")
-      .update({ status: "present", clocked_in_at: new Date().toISOString() })
-      .eq("id", profile.id);
-    if (error) setClockInError(error.message || "Could not clock in. Please try again.");
-    setClockingIn(false);
+      .from("attendance_records")
+      .upsert({ member_id: profile.id, event_id: eventId, status: "present" }, { onConflict: "member_id,event_id" });
+    if (error) setCheckInError(error.message || "Could not check in. Please try again.");
+    setCheckingIn(false);
   }, [profile]);
+
+  const createEvent = useCallback(async (payload) => {
+    if (!profile) return { error: "Not signed in" };
+    const { error } = await supabase.from("events").insert({ ...payload, created_by: profile.id });
+    return { error: error?.message };
+  }, [profile]);
+
+  const updateEvent = useCallback(async (eventId, payload) => {
+    const { error } = await supabase.from("events").update(payload).eq("id", eventId);
+    return { error: error?.message };
+  }, []);
 
   const uploadAvatar = useCallback(async (file) => {
     if (!profile) return;
@@ -2976,10 +3347,16 @@ export default function App() {
 
   const isAdmin = !!profile.is_admin;
   let content;
-  if (screen === "dashboard") content = <Dashboard profile={profile} members={members} onNav={setScreen} unreadCount={unreadPostCount + unreadChatCount} />;
+  if (screen === "dashboard") content = (
+    <Dashboard profile={profile} members={members} events={events} onNav={setScreen}
+      unreadCount={unreadPostCount + unreadChatCount} onCheckIn={checkInToEvent}
+      checkingIn={checkingIn} checkInError={checkInError} />
+  );
   else if (screen === "attendance") content = (
-    <Attendance members={members} loading={loadingMembers} onCycle={cycleMemberStatus} isAdmin={isAdmin}
-      profile={profile} onClockIn={clockIn} clockingIn={clockingIn} clockInError={clockInError} />
+    <Attendance members={members} loading={loadingMembers} isAdmin={isAdmin} profile={profile}
+      events={events} loadingEvents={loadingEvents} onCycle={cycleEventAttendance}
+      onCheckIn={checkInToEvent} checkingIn={checkingIn} checkInError={checkInError}
+      onCreateEvent={createEvent} onUpdateEvent={updateEvent} />
   );
   else if (screen === "library") content = <Library favorites={favorites} toggleFavorite={toggleFavorite} />;
   else if (screen === "messages") content = (
