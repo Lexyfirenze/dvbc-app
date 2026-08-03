@@ -129,6 +129,18 @@ function isClockInWindowOpen() {
   return day === 0 && totalMinutes >= 14 * 60 && totalMinutes <= 15 * 60 + 30;
 }
 
+// The rehearsal date this week's poll and register apply to: today if it's
+// Sunday (Africa/Lagos), otherwise the coming Sunday. Matches the date the
+// save_weekly_attendance() cron archives against (Sundays, Africa/Lagos).
+function getCurrentRehearsalDate() {
+  const now = new Date();
+  const watMillis = now.getTime() + now.getTimezoneOffset() * 60000 + 60 * 60000;
+  const wat = new Date(watMillis);
+  const daysUntilSunday = (7 - wat.getDay()) % 7;
+  wat.setDate(wat.getDate() + daysUntilSunday);
+  return wat.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 function formatClockTime(iso) {
   if (!iso) return null;
   try {
@@ -577,6 +589,67 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
     return () => clearInterval(id);
   }, []);
 
+  const rehearsalDate = getCurrentRehearsalDate();
+  const [availability, setAvailability] = useState([]);
+  const [loadingAvailability, setLoadingAvailability] = useState(true);
+  const [votingBusy, setVotingBusy] = useState(false);
+  const [prefillBusy, setPrefillBusy] = useState(false);
+  const [prefillError, setPrefillError] = useState("");
+
+  const loadAvailability = useCallback(async () => {
+    setLoadingAvailability(true);
+    const { data } = await supabase
+      .from("rehearsal_availability")
+      .select("*")
+      .eq("rehearsal_date", rehearsalDate);
+    setAvailability(data || []);
+    setLoadingAvailability(false);
+  }, [rehearsalDate]);
+
+  useEffect(() => {
+    loadAvailability();
+    const channel = supabase
+      .channel(`availability-${rehearsalDate}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "rehearsal_availability", filter: `rehearsal_date=eq.${rehearsalDate}` }, () => loadAvailability())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [rehearsalDate, loadAvailability]);
+
+  const myVote = availability.find((v) => v.member_id === profile?.id)?.vote || null;
+  const votesByMember = Object.fromEntries(availability.map((v) => [v.member_id, v.vote]));
+  const availableCount = availability.filter((v) => v.vote === "available").length;
+  const unavailableCount = availability.filter((v) => v.vote === "unavailable").length;
+  const excusedRequestCount = availability.filter((v) => v.vote === "excused_request").length;
+
+  const castVote = async (vote) => {
+    if (!profile || votingBusy) return;
+    setVotingBusy(true);
+    await supabase
+      .from("rehearsal_availability")
+      .upsert({ member_id: profile.id, rehearsal_date: rehearsalDate, vote, voted_at: new Date().toISOString() }, { onConflict: "member_id,rehearsal_date" });
+    setVotingBusy(false);
+  };
+
+  const prefillRegisterFromPoll = async () => {
+    if (!isAdmin || prefillBusy) return;
+    if (!window.confirm("Set every member's status from today's poll votes? You can still adjust individual members afterward.")) return;
+    setPrefillBusy(true);
+    setPrefillError("");
+    const voteToStatus = { available: "present", unavailable: "absent", excused_request: "excused" };
+    try {
+      await Promise.all(
+        members.map((m) => {
+          const status = voteToStatus[votesByMember[m.id]] || "absent";
+          return supabase.from("members").update({ status }).eq("id", m.id);
+        })
+      );
+    } catch (err) {
+      setPrefillError(err.message || "Could not update everyone. Please try again.");
+    } finally {
+      setPrefillBusy(false);
+    }
+  };
+
   const myMember = members.find((m) => m.user_id === profile?.user_id);
   const alreadyClockedIn = !!myMember?.clocked_in_at && myMember?.status === "present";
 
@@ -666,6 +739,80 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, onClockIn, cl
         title="Attendance"
         subtitle={isAdmin ? "Shared live sheet · Tap a member to change status" : "Shared live sheet · Updated by section leaders"}
       />
+
+      <div style={{ margin: "18px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Will you be at rehearsal this Sunday?</div>
+        <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 14 }}>
+          Voting is visible to everyone and helps section leaders plan the register.
+        </div>
+
+        {!isAdmin && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {[
+              { key: "available", label: "Available", tone: "present" },
+              { key: "unavailable", label: "Unavailable", tone: "absent" },
+              { key: "excused_request", label: "Request Excusal", tone: "excused" },
+            ].map((opt) => {
+              const active = myVote === opt.key;
+              const toneColor = opt.tone === "present" ? C.sage : opt.tone === "absent" ? C.roseDeep : C.amberText;
+              return (
+                <button
+                  key={opt.key} onClick={() => castVote(opt.key)} disabled={votingBusy} className="dvbc-tap"
+                  style={{
+                    flex: 1, padding: "10px 6px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
+                    border: `1.4px solid ${active ? toneColor : C.lilacLine}`,
+                    background: active ? toneColor : "#fff", color: active ? "#fff" : C.inkSoft,
+                    cursor: votingBusy ? "default" : "pointer",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {loadingAvailability ? (
+          <div style={{ fontSize: 12, color: C.inkSoft }}>Loading votes…</div>
+        ) : (
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1, textAlign: "center", background: C.sageBg, borderRadius: 12, padding: "8px 4px" }}>
+              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.sage }}>{availableCount}</div>
+              <div style={{ fontSize: 9.5, color: C.sage, textTransform: "uppercase", letterSpacing: 0.4 }}>Available</div>
+            </div>
+            <div style={{ flex: 1, textAlign: "center", background: C.roseBg, borderRadius: 12, padding: "8px 4px" }}>
+              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.roseDeep }}>{unavailableCount}</div>
+              <div style={{ fontSize: 9.5, color: C.roseDeep, textTransform: "uppercase", letterSpacing: 0.4 }}>Unavailable</div>
+            </div>
+            <div style={{ flex: 1, textAlign: "center", background: C.amberBg, borderRadius: 12, padding: "8px 4px" }}>
+              <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.amberText }}>{excusedRequestCount}</div>
+              <div style={{ fontSize: 9.5, color: C.amberText, textTransform: "uppercase", letterSpacing: 0.4 }}>Excusal requested</div>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <>
+            {prefillError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 12 }}>
+                <AlertCircle size={13} /> {prefillError}
+              </div>
+            )}
+            <button
+              onClick={prefillRegisterFromPoll} disabled={prefillBusy} className="dvbc-tap"
+              style={{
+                width: "100%", marginTop: 14, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5,
+                padding: 12, borderRadius: 12, border: "none", cursor: prefillBusy ? "default" : "pointer", opacity: prefillBusy ? 0.8 : 1,
+              }}
+            >
+              {prefillBusy ? "Setting register…" : "Set Register From Poll"}
+            </button>
+            <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 6, textAlign: "center" }}>
+              Sets everyone's status below from their vote — you can still adjust individual members after.
+            </div>
+          </>
+        )}
+      </div>
 
       {!isAdmin && (
         <div style={{ margin: "18px 24px 0", background: alreadyClockedIn ? C.sageBg : C.card, border: `1.4px solid ${alreadyClockedIn ? C.sage : C.lilacLine}`, borderRadius: 18, padding: 18 }}>
@@ -1629,6 +1776,22 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => m.approval_status === "pending");
 
+  const [attendancePct, setAttendancePct] = useState(null); // null while loading, number once known
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    supabase
+      .from("attendance_records")
+      .select("status")
+      .eq("member_id", profile.id)
+      .then(({ data }) => {
+        if (!active) return;
+        const rows = data || [];
+        setAttendancePct(rows.length ? Math.round((rows.filter((r) => r.status === "present").length / rows.length) * 100) : 0);
+      });
+    return () => { active = false; };
+  }, [profile?.id]);
+
   return (
     <div style={{ paddingBottom: 110 }}>
       <div style={{ background: GRADIENT, padding: "calc(env(safe-area-inset-top, 0px) + 26px) 24px 34px", textAlign: "center" }}>
@@ -1677,6 +1840,10 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{present}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present today</div>
+          </div>
+          <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>My attendance</div>
           </div>
         </div>
 
