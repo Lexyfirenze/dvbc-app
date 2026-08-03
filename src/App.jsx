@@ -204,17 +204,6 @@ const store = {
   },
 };
 
-const seedLibrary = [
-  { id: 1, title: "Ave Verum Corpus", composer: "W. A. Mozart", tag: "SATB", part: "All" },
-  { id: 2, title: "Ubi Caritas", composer: "Maurice Duruflé", tag: "SATB", part: "All" },
-  { id: 3, title: "Betelehemu", composer: "Wendell Whalum, arr.", tag: "Divisi", part: "All" },
-  { id: 4, title: "The Lord Bless You and Keep You", composer: "John Rutter", tag: "SATB", part: "All" },
-  { id: 5, title: "Zikr", composer: "Trad., arr. Nwosu", tag: "SSA", part: "Soprano" },
-  { id: 6, title: "Set Me as a Seal", composer: "René Clausen", tag: "SATB", part: "All" },
-  { id: 7, title: "Total Praise", composer: "Richard Smallwood", tag: "SATB", part: "All" },
-  { id: 8, title: "Danny Boy", composer: "Trad., arr. Tenor Sect.", tag: "TTBB", part: "Tenor" },
-];
-
 const announcements = [
   { id: 1, title: "Sectional rehearsal added for Altos", time: "Posted 2 hours ago" },
   { id: 2, title: 'New score: "Ave Verum Corpus" uploaded', time: "Posted yesterday" },
@@ -1240,22 +1229,177 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
   );
 }
 
-function Library({ favorites, toggleFavorite }) {
+function LibraryFormPanel({ initial, onCancel, onSave, onUploadAudio }) {
+  const [title, setTitle] = useState(initial?.title || "");
+  const [composer, setComposer] = useState(initial?.composer || "");
+  const [tag, setTag] = useState(initial?.tag || "SATB");
+  const [part, setPart] = useState(initial?.part || "All");
+  const [existingAudioUrl, setExistingAudioUrl] = useState(initial?.audio_url || "");
+  const [audioFile, setAudioFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const tagOptions = ["SATB", "SSA", "TTBB", "SAB", "Divisi", "Unison"];
+  const partOptions = ["All", "Soprano", "Alto", "Tenor", "Bass"];
+
+  const submit = async () => {
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      let audio_url = existingAudioUrl || null;
+      if (audioFile) {
+        const { url, error: uploadErr } = await onUploadAudio(audioFile);
+        if (uploadErr) throw new Error(uploadErr);
+        audio_url = url;
+      }
+      const payload = { title: title.trim(), composer: composer.trim() || null, tag, part, audio_url };
+      const { error: saveErr } = initial ? await onSave.update(initial.id, payload) : await onSave.create(payload);
+      if (saveErr) throw new Error(saveErr);
+      onCancel();
+    } catch (err) {
+      setError(err.message || "Could not save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    width: "100%", border: `1.4px solid ${C.lilacLine}`, borderRadius: 10, padding: "10px 12px",
+    fontSize: 13, color: C.ink, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5, display: "block" };
+
+  return (
+    <div style={{ margin: "18px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{initial ? "Edit Song" : "Add Song"}</div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Title</label>
+        <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ave Verum Corpus" />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Composer</label>
+        <input style={inputStyle} value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="W. A. Mozart" />
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Voicing</label>
+          <select style={inputStyle} value={tag} onChange={(e) => setTag(e.target.value)}>
+            {tagOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Section</label>
+          <select style={inputStyle} value={part} onChange={(e) => setPart(e.target.value)}>
+            {partOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>Audio (MP3, WAV, M4A — up to 25MB)</label>
+        <input type="file" accept="audio/*" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5, color: C.inkSoft }} />
+        {existingAudioUrl && !audioFile && (
+          <div style={{ fontSize: 11, color: C.sage, marginTop: 6 }}>Audio already attached — choose a file above to replace it.</div>
+        )}
+      </div>
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 12 }}>
+          <AlertCircle size={13} /> {error}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={onCancel} className="dvbc-tap"
+          style={{ flex: 1, background: "#fff", color: C.inkSoft, fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: `1.4px solid ${C.lilacLine}`, cursor: "pointer" }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={submit} disabled={saving} className="dvbc-tap"
+          style={{ flex: 2, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
+        >
+          {saving ? "Saving…" : initial ? "Save Changes" : "Add Song"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate, onUpdate, onDelete, onUploadAudio }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
+  const [showForm, setShowForm] = useState(false);
+  const [editingPiece, setEditingPiece] = useState(null);
+  const [playingId, setPlayingId] = useState(null);
+  const [deleteBusyId, setDeleteBusyId] = useState(null);
+  const [rowError, setRowError] = useState("");
+  const audioRef = useRef(null);
 
-  const filtered = seedLibrary.filter((p) => {
+  useEffect(() => {
+    return () => { audioRef.current?.pause(); };
+  }, []);
+
+  const togglePlay = (piece) => {
+    if (!piece.audio_url) return;
+    if (playingId === piece.id) {
+      audioRef.current?.pause();
+      setPlayingId(null);
+      return;
+    }
+    audioRef.current?.pause();
+    const audio = new Audio(piece.audio_url);
+    audio.onended = () => setPlayingId(null);
+    audio.play().catch(() => setPlayingId(null));
+    audioRef.current = audio;
+    setPlayingId(piece.id);
+  };
+
+  const filtered = pieces.filter((p) => {
     const matchesPart = filter === "All" || p.part === "All" || p.part === filter;
     const matchesSearch =
       p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.composer.toLowerCase().includes(search.toLowerCase());
+      (p.composer || "").toLowerCase().includes(search.toLowerCase());
     return matchesPart && matchesSearch;
   });
 
+  const handleDelete = async (piece) => {
+    if (!window.confirm(`Remove "${piece.title}" from the library?`)) return;
+    setDeleteBusyId(piece.id);
+    setRowError("");
+    if (playingId === piece.id) { audioRef.current?.pause(); setPlayingId(null); }
+    const { error } = await onDelete(piece.id);
+    if (error) setRowError(error);
+    setDeleteBusyId(null);
+  };
+
   return (
     <div style={{ paddingBottom: 110 }}>
-      <TopHeader title="Music Library" subtitle={`${seedLibrary.length} pieces · 3 concerts`} />
+      <TopHeader title="Music Library" subtitle={`${pieces.length} piece${pieces.length === 1 ? "" : "s"}`} />
+
+      {isAdmin && (
+        <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={() => { setEditingPiece(null); setShowForm(true); }} className="dvbc-tap"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
+          >
+            <Plus size={14} /> Add Song
+          </button>
+        </div>
+      )}
+
+      {showForm && (
+        <LibraryFormPanel
+          initial={editingPiece}
+          onCancel={() => { setShowForm(false); setEditingPiece(null); }}
+          onSave={{ create: onCreate, update: onUpdate }}
+          onUploadAudio={onUploadAudio}
+        />
+      )}
 
       <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
         <Search size={15} color={C.inkSoft} />
@@ -1271,12 +1415,24 @@ function Library({ favorites, toggleFavorite }) {
         ))}
       </div>
 
+      {isAdmin && rowError && (
+        <div style={{ margin: "12px 24px 0", display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5 }}>
+          <AlertCircle size={13} /> {rowError}
+        </div>
+      )}
+
       <div style={{ padding: "8px 24px 0" }}>
-        {filtered.length === 0 && (
-          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No pieces match.</div>
+        {loading && (
+          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading library…</div>
         )}
-        {filtered.map((p) => {
+        {!loading && filtered.length === 0 && (
+          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>
+            {pieces.length === 0 && isAdmin ? "No songs yet — tap Add Song to get started." : "No pieces match."}
+          </div>
+        )}
+        {!loading && filtered.map((p) => {
           const fav = favorites.includes(p.id);
+          const isPlaying = playingId === p.id;
           return (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
               <button onClick={() => toggleFavorite(p.id)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", flexShrink: 0, display: "flex" }}>
@@ -1284,13 +1440,30 @@ function Library({ favorites, toggleFavorite }) {
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</div>
-                <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{p.composer}</div>
+                <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{p.composer || "Traditional"}</div>
+                {isAdmin && (
+                  <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                    <button onClick={() => { setEditingPiece(p); setShowForm(true); }} className="dvbc-tap" style={{ fontSize: 10.5, fontWeight: 700, color: C.plum, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
+                    <button onClick={() => handleDelete(p)} disabled={deleteBusyId === p.id} className="dvbc-tap" style={{ fontSize: 10.5, fontWeight: 700, color: C.roseDeep, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                      {deleteBusyId === p.id ? "Removing…" : "Delete"}
+                    </button>
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <Pill>{p.tag}</Pill>
-                <div style={{ width: 30, height: 30, borderRadius: "50%", background: GRADIENT, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Play size={12} color="#fff" fill="#fff" />
-                </div>
+                <button
+                  onClick={() => togglePlay(p)} disabled={!p.audio_url} className="dvbc-tap"
+                  style={{
+                    width: 30, height: 30, borderRadius: "50%", border: "none", cursor: p.audio_url ? "pointer" : "default",
+                    background: p.audio_url ? GRADIENT : C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                  title={p.audio_url ? (isPlaying ? "Pause" : "Play") : "No audio uploaded yet"}
+                >
+                  {isPlaying
+                    ? <Pause size={12} color="#fff" fill="#fff" />
+                    : <Play size={12} color={p.audio_url ? "#fff" : "#B8ADC0"} fill={p.audio_url ? "#fff" : "#B8ADC0"} />}
+                </button>
               </div>
             </div>
           );
@@ -3015,6 +3188,8 @@ export default function App() {
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [checkInError, setCheckInError] = useState("");
+  const [libraryPieces, setLibraryPieces] = useState([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
   useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
@@ -3078,6 +3253,29 @@ export default function App() {
           }
           if (payload.eventType === "UPDATE") return prev.map((e) => (e.id === payload.new.id ? payload.new : e));
           if (payload.eventType === "DELETE") return prev.filter((e) => e.id !== payload.old.id);
+          return prev;
+        });
+      })
+      .subscribe();
+
+    return () => { active = false; supabase.removeChannel(channel); };
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    setLoadingLibrary(true);
+    supabase.from("library_pieces").select("*").order("display_order").order("title").then(({ data }) => {
+      if (active) { setLibraryPieces(data || []); setLoadingLibrary(false); }
+    });
+
+    const channel = supabase
+      .channel("library-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "library_pieces" }, (payload) => {
+        setLibraryPieces((prev) => {
+          if (payload.eventType === "INSERT") return [...prev, payload.new];
+          if (payload.eventType === "UPDATE") return prev.map((p) => (p.id === payload.new.id ? payload.new : p));
+          if (payload.eventType === "DELETE") return prev.filter((p) => p.id !== payload.old.id);
           return prev;
         });
       })
@@ -3281,6 +3479,35 @@ export default function App() {
     return { error: error?.message };
   }, []);
 
+  const uploadLibraryAudio = useCallback(async (file) => {
+    if (!profile) return { error: "Not signed in" };
+    const ALLOWED = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/mp4", "audio/aac", "audio/ogg", "audio/x-m4a"];
+    if (!ALLOWED.includes(file.type)) return { error: "Please choose an MP3, WAV, M4A, AAC, or OGG file." };
+    if (file.size > 25 * 1024 * 1024) return { error: "Audio file must be under 25MB." };
+    const ext = (file.name.split(".").pop() || "mp3").toLowerCase();
+    const path = `${profile.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("library-audio").upload(path, file);
+    if (uploadError) return { error: uploadError.message };
+    const { data } = supabase.storage.from("library-audio").getPublicUrl(path);
+    return { url: data.publicUrl };
+  }, [profile]);
+
+  const createLibraryPiece = useCallback(async (payload) => {
+    if (!profile) return { error: "Not signed in" };
+    const { error } = await supabase.from("library_pieces").insert({ ...payload, created_by: profile.id });
+    return { error: error?.message };
+  }, [profile]);
+
+  const updateLibraryPiece = useCallback(async (pieceId, payload) => {
+    const { error } = await supabase.from("library_pieces").update(payload).eq("id", pieceId);
+    return { error: error?.message };
+  }, []);
+
+  const deleteLibraryPiece = useCallback(async (pieceId) => {
+    const { error } = await supabase.from("library_pieces").delete().eq("id", pieceId);
+    return { error: error?.message };
+  }, []);
+
   const uploadAvatar = useCallback(async (file) => {
     if (!profile) return;
     setAvatarError("");
@@ -3381,7 +3608,14 @@ export default function App() {
       onCheckIn={checkInToEvent} checkingIn={checkingIn} checkInError={checkInError}
       onCreateEvent={createEvent} onUpdateEvent={updateEvent} />
   );
-  else if (screen === "library") content = <Library favorites={favorites} toggleFavorite={toggleFavorite} />;
+  else if (screen === "library") content = (
+    <Library
+      favorites={favorites} toggleFavorite={toggleFavorite} isAdmin={isAdmin}
+      pieces={libraryPieces} loading={loadingLibrary}
+      onCreate={createLibraryPiece} onUpdate={updateLibraryPiece} onDelete={deleteLibraryPiece}
+      onUploadAudio={uploadLibraryAudio}
+    />
+  );
   else if (screen === "messages") content = (
     <Messages posts={posts} loading={loadingPosts} isAdmin={isAdmin} profile={profile}
       onBack={() => setScreen("dashboard")} onSubmitPost={submitPost} onSubmitComment={submitComment}
