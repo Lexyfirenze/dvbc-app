@@ -1,0 +1,16 @@
+{
+  "name": "De Voci Belli Chorale",
+  "short_name": "DVB Chorale",
+  "description": "De Voci Belli Chorale members portal — rehearsals, attendance, practice tracks, and the music library.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F1EDFC",
+  "theme_color": "#7A1F3D",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
+
