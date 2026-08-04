@@ -5,8 +5,14 @@
 // the network so data stays live. Offline audio/PDF downloads are handled
 // separately, directly in the app via the Cache Storage API (see App.jsx),
 // not through this worker.
+//
+// IMPORTANT: bump SHELL_CACHE's version suffix (v2, v3, ...) on any deploy
+// where you need users' cached shell/assets invalidated. A service worker
+// only re-installs when the browser detects this file's bytes changed, so
+// touching only App.jsx/other files will NOT trigger an update on its own —
+// changing this file (e.g. the version string below) is what does it.
 
-const SHELL_CACHE = "dvbc-shell-v1";
+const SHELL_CACHE = "dvbc-shell-v2";
 const SHELL_URLS = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -24,7 +30,13 @@ self.addEventListener("activate", (event) => {
           .filter((key) => key.startsWith("dvbc-shell-") && key !== SHELL_CACHE)
           .map((key) => caches.delete(key))
       )
-    )
+    ).then(async () => {
+      // Tell every open tab a new version has taken over so it can reload
+      // itself and actually show the new code, instead of silently running
+      // stale JS until the user manually closes and reopens the app.
+      const clientsList = await self.clients.matchAll({ type: "window" });
+      clientsList.forEach((client) => client.postMessage({ type: "DVBC_SW_UPDATED" }));
+    })
   );
   self.clients.claim();
 });
