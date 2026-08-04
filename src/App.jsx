@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
-  Repeat, RotateCcw, RotateCw, X, Plus, Gauge } from "lucide-react";
+  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -165,6 +165,103 @@ function toDatetimeLocalValue(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/* ---------- Offline media (Cache Storage API — sandboxed inside the app/browser;
+   nothing is written to the device's own Downloads folder or file system) ---------- */
+const OFFLINE_AUDIO_CACHE = "dvbc-audio-v1";
+const OFFLINE_SHEETS_CACHE = "dvbc-sheets-v1";
+const offlineSupported = () => typeof window !== "undefined" && "caches" in window;
+
+// Sheet PDFs are served via signed URLs that rotate every 5 minutes, so we key
+// the offline copy by the stable storage path instead of the URL.
+function sheetCacheRequest(path) {
+  return new Request(`https://dvbc-offline.local/sheets/${encodeURIComponent(path)}`);
+}
+
+async function isAudioDownloaded(url) {
+  if (!url || !offlineSupported()) return false;
+  const cache = await caches.open(OFFLINE_AUDIO_CACHE);
+  return !!(await cache.match(url));
+}
+
+async function downloadAudioOffline(url) {
+  if (!offlineSupported()) return { error: "Offline downloads aren't supported on this device." };
+  if (!url) return { error: "This track has no audio yet." };
+  try {
+    const cache = await caches.open(OFFLINE_AUDIO_CACHE);
+    await cache.add(url);
+    return {};
+  } catch {
+    return { error: "Could not save for offline use. Please try again." };
+  }
+}
+
+async function removeAudioOffline(url) {
+  if (!url || !offlineSupported()) return;
+  const cache = await caches.open(OFFLINE_AUDIO_CACHE);
+  await cache.delete(url);
+}
+
+// Prefer a downloaded copy so playback works with no connection at all.
+async function getPlayableAudioSrc(url) {
+  if (url && offlineSupported()) {
+    const cache = await caches.open(OFFLINE_AUDIO_CACHE);
+    const cached = await cache.match(url);
+    if (cached) return URL.createObjectURL(await cached.blob());
+  }
+  return url;
+}
+
+async function isSheetDownloaded(path) {
+  if (!path || !offlineSupported()) return false;
+  const cache = await caches.open(OFFLINE_SHEETS_CACHE);
+  return !!(await cache.match(sheetCacheRequest(path)));
+}
+
+async function downloadSheetOffline(path) {
+  if (!offlineSupported()) return { error: "Offline downloads aren't supported on this device." };
+  if (!path) return { error: "No sheet attached to this track." };
+  try {
+    const { data, error: signError } = await supabase.storage.from("practice-sheets").createSignedUrl(path, 300);
+    if (signError || !data?.signedUrl) throw new Error("Could not reach the sheet music.");
+    const response = await fetch(data.signedUrl);
+    if (!response.ok) throw new Error("Could not reach the sheet music.");
+    const cache = await caches.open(OFFLINE_SHEETS_CACHE);
+    await cache.put(sheetCacheRequest(path), response);
+    return {};
+  } catch (err) {
+    return { error: err.message || "Could not save for offline use. Please try again." };
+  }
+}
+
+async function removeSheetOffline(path) {
+  if (!path || !offlineSupported()) return;
+  const cache = await caches.open(OFFLINE_SHEETS_CACHE);
+  await cache.delete(sheetCacheRequest(path));
+}
+
+// Returns an in-memory blob URL for a downloaded sheet, or null if it hasn't
+// been saved for offline use — the PDF still only ever lives inside the
+// browser's app-sandboxed cache, never the device's shared file system.
+async function getSheetOfflineBlobUrl(path) {
+  if (!path || !offlineSupported()) return null;
+  const cache = await caches.open(OFFLINE_SHEETS_CACHE);
+  const cached = await cache.match(sheetCacheRequest(path));
+  if (!cached) return null;
+  return URL.createObjectURL(await cached.blob());
+}
+
+function OfflineToggle({ downloaded, busy, onDownload, onRemove, size = 15 }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); if (busy) return; downloaded ? onRemove() : onDownload(); }}
+      disabled={busy} className="dvbc-tap" title={downloaded ? "Downloaded for offline use — tap to remove" : "Save for offline use"}
+      style={{ background: "none", border: "none", cursor: busy ? "default" : "pointer", display: "flex", padding: 0, opacity: busy ? 0.5 : 1 }}
+    >
+      {downloaded ? <CheckSquare size={size} color={C.sage} /> : <Download size={size} color={C.inkSoft} />}
+    </button>
+  );
+}
+
 function formatClockTime(iso) {
   if (!iso) return null;
   try {
@@ -203,12 +300,6 @@ const store = {
     } catch (e) { /* storage unavailable */ }
   },
 };
-
-const announcements = [
-  { id: 1, title: "Sectional rehearsal added for Altos", time: "Posted 2 hours ago" },
-  { id: 2, title: 'New score: "Ave Verum Corpus" uploaded', time: "Posted yesterday" },
-  { id: 3, title: "Uniform fitting this Saturday, 10 AM", time: "Posted 2 days ago" },
-];
 
 /* ---------- Small building blocks ---------- */
 function Badge() {
@@ -493,7 +584,7 @@ function TopHeader({ title, subtitle }) {
   );
 }
 
-function Dashboard({ profile, members, events, onNav, unreadCount = 0, onCheckIn, checkingIn, checkInError }) {
+function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onNav, unreadCount = 0, onCheckIn, checkingIn, checkInError }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
   const displayName = profile?.name ? profile.name.split(" ")[0] : "Member";
@@ -529,6 +620,24 @@ function Dashboard({ profile, members, events, onNav, unreadCount = 0, onCheckIn
     return () => { active = false; };
   }, [profile?.id, nextEvent?.id, checkingIn]);
   const alreadyCheckedIn = myEventRecord?.status === "present";
+
+  const announcements = (posts || []).slice(0, 3).map((p) => ({
+    id: p.id,
+    title: p.content.length > 90 ? `${p.content.slice(0, 90)}…` : p.content,
+    time: `Posted ${timeAgo(p.created_at)}`,
+  }));
+
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+  const submitAnnouncement = async () => {
+    if (!draft.trim() || !onSubmitPost) return;
+    setPosting(true);
+    await onSubmitPost(draft.trim());
+    setPosting(false);
+    setDraft("");
+    setComposerOpen(false);
+  };
 
   return (
     <div style={{ paddingBottom: 110 }}>
@@ -617,7 +726,52 @@ function Dashboard({ profile, members, events, onNav, unreadCount = 0, onCheckIn
           </button>
         </div>
 
-        <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, margin: "22px 0 10px" }}>Announcements</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Announcements</div>
+          {isAdmin && (
+            <button
+              onClick={() => setComposerOpen((v) => !v)}
+              className="dvbc-tap"
+              style={{
+                display: "flex", alignItems: "center", gap: 4, background: composerOpen ? C.lilacSoft : "transparent",
+                border: `1px solid ${C.lilacLine}`, borderRadius: 999, padding: "5px 10px", cursor: "pointer",
+                fontSize: 11.5, fontWeight: 600, color: C.plum,
+              }}
+            >
+              <Plus size={13} /> {composerOpen ? "Cancel" : "New"}
+            </button>
+          )}
+        </div>
+        {isAdmin && composerOpen && (
+          <div style={{ background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: 12, marginBottom: 12 }}>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Write an announcement for the chorale…"
+              rows={3}
+              style={{
+                width: "100%", border: "none", outline: "none", resize: "none", fontFamily: "Inter, system-ui, sans-serif",
+                fontSize: 13.5, color: C.ink, background: "transparent", boxSizing: "border-box",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <button
+                onClick={submitAnnouncement}
+                disabled={!draft.trim() || posting}
+                className="dvbc-tap"
+                style={{
+                  background: draft.trim() ? GRADIENT : C.lilacLine, color: "#fff", border: "none", borderRadius: 999,
+                  padding: "8px 16px", fontSize: 12.5, fontWeight: 700, cursor: draft.trim() ? "pointer" : "default",
+                }}
+              >
+                {posting ? "Posting…" : "Post"}
+              </button>
+            </div>
+          </div>
+        )}
+        {announcements.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No announcements yet.</div>
+        )}
         {announcements.map((a) => (
           <div key={a.id} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.lilacLine}`, alignItems: "flex-start" }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.plum, marginTop: 5, flexShrink: 0 }} />
@@ -1338,13 +1492,38 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
   const [playingId, setPlayingId] = useState(null);
   const [deleteBusyId, setDeleteBusyId] = useState(null);
   const [rowError, setRowError] = useState("");
+  const [downloadedIds, setDownloadedIds] = useState(new Set());
+  const [downloadBusyId, setDownloadBusyId] = useState(null);
   const audioRef = useRef(null);
 
   useEffect(() => {
     return () => { audioRef.current?.pause(); };
   }, []);
 
-  const togglePlay = (piece) => {
+  useEffect(() => {
+    let active = true;
+    Promise.all(pieces.map(async (p) => [p.id, await isAudioDownloaded(p.audio_url)]))
+      .then((entries) => { if (active) setDownloadedIds(new Set(entries.filter(([, ok]) => ok).map(([id]) => id))); });
+    return () => { active = false; };
+  }, [pieces]);
+
+  const handleDownload = async (piece) => {
+    setDownloadBusyId(piece.id);
+    setRowError("");
+    const { error } = await downloadAudioOffline(piece.audio_url);
+    if (error) setRowError(error);
+    else setDownloadedIds((prev) => new Set(prev).add(piece.id));
+    setDownloadBusyId(null);
+  };
+
+  const handleRemoveDownload = async (piece) => {
+    setDownloadBusyId(piece.id);
+    await removeAudioOffline(piece.audio_url);
+    setDownloadedIds((prev) => { const next = new Set(prev); next.delete(piece.id); return next; });
+    setDownloadBusyId(null);
+  };
+
+  const togglePlay = async (piece) => {
     if (!piece.audio_url) return;
     if (playingId === piece.id) {
       audioRef.current?.pause();
@@ -1352,7 +1531,8 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
       return;
     }
     audioRef.current?.pause();
-    const audio = new Audio(piece.audio_url);
+    const src = await getPlayableAudioSrc(piece.audio_url);
+    const audio = new Audio(src);
     audio.onended = () => setPlayingId(null);
     audio.play().catch(() => setPlayingId(null));
     audioRef.current = audio;
@@ -1415,7 +1595,7 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
         ))}
       </div>
 
-      {isAdmin && rowError && (
+      {rowError && (
         <div style={{ margin: "12px 24px 0", display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5 }}>
           <AlertCircle size={13} /> {rowError}
         </div>
@@ -1452,6 +1632,12 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <Pill>{p.tag}</Pill>
+                {p.audio_url && (
+                  <OfflineToggle
+                    downloaded={downloadedIds.has(p.id)} busy={downloadBusyId === p.id}
+                    onDownload={() => handleDownload(p)} onRemove={() => handleRemoveDownload(p)}
+                  />
+                )}
                 <button
                   onClick={() => togglePlay(p)} disabled={!p.audio_url} className="dvbc-tap"
                   style={{
@@ -2443,26 +2629,41 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
 }
 function SheetMusicViewer({ path, title, onClose }) {
   const [signedUrl, setSignedUrl] = useState(null);
+  const [isOfflineCopy, setIsOfflineCopy] = useState(false);
   const [error, setError] = useState("");
+  const blobUrlRef = useRef(null);
 
   useEffect(() => {
     let active = true;
     setSignedUrl(null);
+    setIsOfflineCopy(false);
     setError("");
-    supabase.storage
-      .from("practice-sheets")
-      .createSignedUrl(path, 300) // link expires in 5 minutes
-      .then(({ data, error: signError }) => {
-        if (!active) return;
-        if (signError || !data?.signedUrl) {
-          setError("Couldn't load the sheet music. Please try again.");
-          return;
-        }
-        // #toolbar=0&navpanes=0 hides the browser PDF viewer's download/print controls
-        // (supported in Chrome/most Android WebViews; not a hard guarantee everywhere).
-        setSignedUrl(`${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0`);
-      });
-    return () => { active = false; };
+
+    (async () => {
+      // Prefer an already-downloaded copy so the sheet opens with no connection at all.
+      const offlineBlobUrl = await getSheetOfflineBlobUrl(path);
+      if (!active) return;
+      if (offlineBlobUrl) {
+        blobUrlRef.current = offlineBlobUrl;
+        setSignedUrl(`${offlineBlobUrl}#toolbar=0&navpanes=0&scrollbar=0`);
+        setIsOfflineCopy(true);
+        return;
+      }
+      const { data, error: signError } = await supabase.storage.from("practice-sheets").createSignedUrl(path, 300);
+      if (!active) return;
+      if (signError || !data?.signedUrl) {
+        setError("Couldn't load the sheet music. Please try again.");
+        return;
+      }
+      // #toolbar=0&navpanes=0 hides the browser PDF viewer's download/print controls
+      // (supported in Chrome/most Android WebViews; not a hard guarantee everywhere).
+      setSignedUrl(`${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0`);
+    })();
+
+    return () => {
+      active = false;
+      if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+    };
   }, [path]);
 
   return (
@@ -2471,7 +2672,10 @@ function SheetMusicViewer({ path, title, onClose }) {
       onContextMenu={(e) => e.preventDefault()}
     >
       <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+          {isOfflineCopy && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10.5, marginTop: 2 }}>Viewing saved offline copy</div>}
+        </div>
         <button onClick={onClose} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexShrink: 0, marginLeft: 12 }}>
           <X size={20} color="#fff" />
         </button>
@@ -2634,6 +2838,63 @@ function PracticeLists({ isAdmin, profile }) {
 
   const currentTrack = openList?.tracks.find((t) => t.id === currentTrackId);
 
+  const [playableSrc, setPlayableSrc] = useState(null);
+  useEffect(() => {
+    let active = true;
+    if (!currentTrack?.audio_url) { setPlayableSrc(null); return; }
+    getPlayableAudioSrc(currentTrack.audio_url).then((src) => { if (active) setPlayableSrc(src); });
+    return () => { active = false; };
+  }, [currentTrack?.id, currentTrack?.audio_url]);
+
+  const [downloadedAudio, setDownloadedAudio] = useState(new Set());
+  const [downloadedSheets, setDownloadedSheets] = useState(new Set());
+  const [offlineBusyId, setOfflineBusyId] = useState(null);
+  const [offlineError, setOfflineError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const allTracks = lists.flatMap((l) => l.tracks);
+    Promise.all(allTracks.map(async (t) => [t.id, await isAudioDownloaded(t.audio_url)])).then((entries) => {
+      if (active) setDownloadedAudio(new Set(entries.filter(([, ok]) => ok).map(([id]) => id)));
+    });
+    Promise.all(allTracks.filter((t) => t.sheet_pdf_url).map(async (t) => [t.id, await isSheetDownloaded(t.sheet_pdf_url)])).then((entries) => {
+      if (active) setDownloadedSheets(new Set(entries.filter(([, ok]) => ok).map(([id]) => id)));
+    });
+    return () => { active = false; };
+  }, [lists]);
+
+  const downloadTrackAudio = async (track) => {
+    setOfflineBusyId(`audio-${track.id}`);
+    setOfflineError("");
+    const { error } = await downloadAudioOffline(track.audio_url);
+    if (error) setOfflineError(error);
+    else setDownloadedAudio((prev) => new Set(prev).add(track.id));
+    setOfflineBusyId(null);
+  };
+
+  const removeTrackAudio = async (track) => {
+    setOfflineBusyId(`audio-${track.id}`);
+    await removeAudioOffline(track.audio_url);
+    setDownloadedAudio((prev) => { const next = new Set(prev); next.delete(track.id); return next; });
+    setOfflineBusyId(null);
+  };
+
+  const downloadTrackSheet = async (track) => {
+    setOfflineBusyId(`sheet-${track.id}`);
+    setOfflineError("");
+    const { error } = await downloadSheetOffline(track.sheet_pdf_url);
+    if (error) setOfflineError(error);
+    else setDownloadedSheets((prev) => new Set(prev).add(track.id));
+    setOfflineBusyId(null);
+  };
+
+  const removeTrackSheet = async (track) => {
+    setOfflineBusyId(`sheet-${track.id}`);
+    await removeSheetOffline(track.sheet_pdf_url);
+    setDownloadedSheets((prev) => { const next = new Set(prev); next.delete(track.id); return next; });
+    setOfflineBusyId(null);
+  };
+
   const resetListForm = () => {
     setListForm({ title: "", voice_part: "All" });
     setListCoverFile(null);
@@ -2781,16 +3042,28 @@ function PracticeLists({ isAdmin, profile }) {
     const isRepeating = repeatIds.has(currentTrack.id);
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 50, background: `linear-gradient(180deg, ${C.plum} 0%, ${C.garnetDark} 100%)`, display: "flex", flexDirection: "column" }}>
-        <audio ref={audioRef} src={currentTrack.audio_url} autoPlay />
+        <audio ref={audioRef} src={playableSrc || currentTrack.audio_url} autoPlay />
         <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 22px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          {currentTrack.sheet_pdf_url ? (
-            <button
-              onClick={() => setViewingSheet({ path: currentTrack.sheet_pdf_url, title: currentTrack.title })}
-              className="dvbc-tap" style={{ background: "none", border: "none", color: "#fff", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: 0 }}
-            >
-              <FileText size={18} color="#fff" />
-            </button>
-          ) : <div style={{ width: 18 }} />}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, width: 44 }}>
+            {currentTrack.sheet_pdf_url && (
+              <button
+                onClick={() => setViewingSheet({ path: currentTrack.sheet_pdf_url, title: currentTrack.title })}
+                className="dvbc-tap" style={{ background: "none", border: "none", color: "#fff", display: "flex", cursor: "pointer", padding: 0 }}
+              >
+                <FileText size={18} color="#fff" />
+              </button>
+            )}
+            {currentTrack.audio_url && (
+              <button
+                onClick={() => (downloadedAudio.has(currentTrack.id) ? removeTrackAudio(currentTrack) : downloadTrackAudio(currentTrack))}
+                disabled={offlineBusyId === `audio-${currentTrack.id}`} className="dvbc-tap"
+                style={{ background: "none", border: "none", display: "flex", cursor: "pointer", padding: 0, opacity: offlineBusyId === `audio-${currentTrack.id}` ? 0.5 : 1 }}
+                title={downloadedAudio.has(currentTrack.id) ? "Downloaded for offline use — tap to remove" : "Save audio for offline use"}
+              >
+                {downloadedAudio.has(currentTrack.id) ? <CheckSquare size={18} color="#fff" /> : <Download size={18} color="rgba(255,255,255,0.8)" />}
+              </button>
+            )}
+          </div>
           <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>{openList.title}</div>
           <button onClick={() => setPlayerExpanded(false)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
             <X size={20} color="#fff" />
@@ -2886,6 +3159,12 @@ function PracticeLists({ isAdmin, profile }) {
             </button>
           )}
 
+          {offlineError && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginBottom: 10 }}>
+              <AlertCircle size={13} /> {offlineError}
+            </div>
+          )}
+
           {openList.tracks.length === 0 && (
             <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No tracks in this list yet.</div>
           )}
@@ -2904,15 +3183,31 @@ function PracticeLists({ isAdmin, profile }) {
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
                   {t.composer && <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{t.composer}</div>}
                 </div>
+                {t.audio_url && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <OfflineToggle
+                      downloaded={downloadedAudio.has(t.id)} busy={offlineBusyId === `audio-${t.id}`}
+                      onDownload={() => downloadTrackAudio(t)} onRemove={() => removeTrackAudio(t)}
+                    />
+                  </div>
+                )}
                 {t.sheet_pdf_url && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setViewingSheet({ path: t.sheet_pdf_url, title: t.title }); }}
-                    className="dvbc-tap"
-                    style={{ width: 30, height: 30, borderRadius: "50%", background: C.lilacSoft, border: "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: C.plum, cursor: "pointer" }}
-                    title="View sheet music"
-                  >
-                    <FileText size={14} color={C.plum} />
-                  </button>
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setViewingSheet({ path: t.sheet_pdf_url, title: t.title }); }}
+                      className="dvbc-tap"
+                      style={{ width: 30, height: 30, borderRadius: "50%", background: C.lilacSoft, border: "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: C.plum, cursor: "pointer" }}
+                      title="View sheet music"
+                    >
+                      <FileText size={14} color={C.plum} />
+                    </button>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <OfflineToggle
+                        downloaded={downloadedSheets.has(t.id)} busy={offlineBusyId === `sheet-${t.id}`}
+                        onDownload={() => downloadTrackSheet(t)} onRemove={() => removeTrackSheet(t)}
+                      />
+                    </div>
+                  </>
                 )}
                 {canManage(openList) && (
                   <div style={{ display: "flex", gap: 10, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
@@ -2968,7 +3263,7 @@ function PracticeLists({ isAdmin, profile }) {
               padding: "14px 24px calc(env(safe-area-inset-bottom, 0px) + 14px)", cursor: "pointer",
             }}
           >
-            <audio ref={audioRef} src={currentTrack.audio_url} autoPlay />
+            <audio ref={audioRef} src={playableSrc || currentTrack.audio_url} autoPlay />
             <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.title}</div>
             <div onClick={(e) => { e.stopPropagation(); seekTo(e); }} style={{ height: 6, borderRadius: 999, background: C.lilacSoft, cursor: "pointer", position: "relative" }}>
               <div style={{ height: "100%", borderRadius: 999, background: GRADIENT, width: `${duration ? (progress / duration) * 100 : 0}%` }} />
@@ -3193,6 +3488,16 @@ export default function App() {
 
   useEffect(() => { store.set("dvbc-favorites", favorites); }, [favorites]);
   useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
+
+  // Ask the browser not to evict this origin's Cache Storage under storage
+  // pressure — protects members' downloaded offline audio/sheet music.
+  // Best-effort: browsers may still say no in a plain (non-installed) tab,
+  // but installed + engaged origins are far more likely to be granted this.
+  useEffect(() => {
+    if (navigator.storage?.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
@@ -3598,7 +3903,7 @@ export default function App() {
   const isAdmin = !!profile.is_admin;
   let content;
   if (screen === "dashboard") content = (
-    <Dashboard profile={profile} members={members} events={events} onNav={setScreen}
+    <Dashboard profile={profile} members={members} events={events} posts={posts} isAdmin={isAdmin} onSubmitPost={submitPost} onNav={setScreen}
       unreadCount={unreadPostCount + unreadChatCount} onCheckIn={checkInToEvent}
       checkingIn={checkingIn} checkInError={checkInError} />
   );
