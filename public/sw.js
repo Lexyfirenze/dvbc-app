@@ -7,7 +7,7 @@
 // not through this worker.
 
 const SHELL_CACHE = "dvbc-shell-v1";
-const SHELL_URLS = ["/", "/index.html", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
+const SHELL_URLS = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
