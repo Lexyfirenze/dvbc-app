@@ -4,6 +4,8 @@ import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
+import photoImg2 from "./assets/chorale-photo-2.jpg";
+import photoImg3 from "./assets/chorale-photo-3.jpg";
 import { supabase } from "./supabaseClient";
 
 /* ---------- Design tokens: indigo / violet / lavender interface ---------- */
@@ -29,6 +31,7 @@ const C = {
 const GRADIENT = `linear-gradient(135deg, ${C.garnetDark} 0%, ${C.garnet} 45%, ${C.plum} 100%)`;
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/625qw7lnZ6C7tYDOs7ioC3?s=sh&p=a&mlu=4";
+const HERO_PHOTOS = [photoImg, photoImg2, photoImg3];
 
 /* ---------- Theming: light/dark token sets, applied by mutating C in place ---------- */
 const LIGHT_THEME = { ...C };
@@ -120,6 +123,63 @@ function RingProgress({ value = 0, size = 64, strokeWidth = 7, color, track, chi
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {children}
       </div>
+    </div>
+  );
+}
+
+/* ---------- Auto-rotating hero photo carousel ---------- */
+function HeroCarousel({ photos, height = 190, intervalMs = 4500 }) {
+  const [index, setIndex] = useState(0);
+  const touchStartX = useRef(null);
+  useEffect(() => {
+    if (photos.length <= 1) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % photos.length), intervalMs);
+    return () => clearInterval(id);
+  }, [photos.length, intervalMs]);
+
+  const goTo = (i) => setIndex(((i % photos.length) + photos.length) % photos.length);
+  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const diff = e.changedTouches[0].clientX - touchStartX.current;
+    if (diff > 40) goTo(index - 1);
+    else if (diff < -40) goTo(index + 1);
+    touchStartX.current = null;
+  };
+
+  return (
+    <div
+      style={{ position: "relative", width: "100%", height, overflow: "hidden" }}
+      onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
+    >
+      {photos.map((src, i) => (
+        <img
+          key={src}
+          src={src} alt="De Voci Belli Chorale members"
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block",
+            opacity: i === index ? 1 : 0, transition: "opacity 0.6s ease",
+          }}
+        />
+      ))}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(36,18,70,0.88) 0%, rgba(36,18,70,0.15) 55%, rgba(36,18,70,0) 100%)" }} />
+      <div style={{ position: "absolute", left: 18, right: 18, bottom: 16, color: "#fff" }}>
+        <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Our Chorale</div>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 3 }}>Beautiful voices, one family</div>
+      </div>
+      {photos.length > 1 && (
+        <div style={{ position: "absolute", top: 14, right: 14, display: "flex", gap: 5 }}>
+          {photos.map((_, i) => (
+            <div
+              key={i} onClick={() => goTo(i)}
+              style={{
+                width: i === index ? 16 : 6, height: 6, borderRadius: 999, cursor: "pointer",
+                background: i === index ? "#fff" : "rgba(255,255,255,0.45)", transition: "width 0.25s ease",
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -775,7 +835,7 @@ function TopHeader({ title, subtitle }) {
   );
 }
 
-function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onNav, unreadCount = 0, onCheckIn, checkingIn, checkInError }) {
+function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitPost, onNav, unreadCount = 0, onCheckIn, checkingIn, checkInError }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
   const displayName = profile?.name ? profile.name.split(" ")[0] : "Member";
@@ -914,12 +974,7 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
 
       <div style={{ padding: "18px 24px" }}>
         <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", boxShadow: "0 10px 26px rgba(76,46,158,0.18)" }}>
-          <img src={photoImg} alt="De Voci Belli Chorale members" style={{ width: "100%", height: 190, objectFit: "cover", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(36,18,70,0.88) 0%, rgba(36,18,70,0.15) 55%, rgba(36,18,70,0) 100%)" }} />
-          <div style={{ position: "absolute", left: 18, right: 18, bottom: 16, color: "#fff" }}>
-            <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Our Chorale</div>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 3 }}>Beautiful voices, one family</div>
-          </div>
+          <HeroCarousel photos={HERO_PHOTOS} height={190} />
         </div>
 
         {nextEvent ? (
@@ -967,7 +1022,9 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
             <div style={{ fontSize: 11, color: C.inkSoft }}>Your<br />Attendance</div>
           </button>
           <button onClick={() => onNav("library")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>6/8</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>
+              {(pieces || []).filter((p) => p.is_ready).length}/{(pieces || []).length}
+            </div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Pieces Ready</div>
           </button>
         </div>
@@ -1175,7 +1232,7 @@ function EventFormPanel({ initial, onCancel, onSave }) {
   );
 }
 
-function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent }) {
+function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
@@ -1209,6 +1266,7 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
   const [prefillBusy, setPrefillBusy] = useState(false);
   const [prefillError, setPrefillError] = useState("");
   const [rosterError, setRosterError] = useState("");
+  const [bulkFillBusy, setBulkFillBusy] = useState(false);
 
   const loadInterest = useCallback(async () => {
     if (!selectedEventId) { setInterest([]); setLoadingInterest(false); return; }
@@ -1322,7 +1380,8 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
     const status = statusByMember[m.id] || null;
     const record = records.find((r) => r.member_id === m.id);
     const avColor = avatarColorFor(m.name);
-    const row = (
+
+    const identity = (
       <>
         <div style={{
           width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
@@ -1333,33 +1392,49 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
             ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{m.name}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
           <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{m.part}</div>
           {status === "present" && record?.created_at && (
             <div style={{ fontSize: 10, color: C.sage, marginTop: 2 }}>Checked in {formatClockTime(record.created_at)}</div>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Pill tone={status || "gold"}>{status || "not marked"}</Pill>
-        </div>
       </>
     );
 
     if (isAdmin) {
+      // Spreadsheet-style: three direct tap cells (P / A / E) instead of a blind cycle.
+      // Tapping the currently-active cell clears the mark back to "not marked".
+      const CELLS = [
+        { key: "present", label: "P", activeBg: C.sage, activeFg: "#fff" },
+        { key: "absent", label: "A", activeBg: C.roseDeep, activeFg: "#fff" },
+        { key: "excused", label: "E", activeBg: C.amberText, activeFg: "#fff" },
+      ];
       return (
-        <button
-          key={m.id}
-          onClick={async () => {
-            setRosterError("");
-            const { error } = (await onCycle(m, selectedEventId, status)) || {};
-            if (error) setRosterError(error);
-          }}
-          className="dvbc-row"
-          style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", background: "none", border: "none", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer", textAlign: "left" }}
-        >
-          {row}
-        </button>
+        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+          {identity}
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            {CELLS.map((cell) => (
+              <button
+                key={cell.key}
+                onClick={async () => {
+                  setRosterError("");
+                  const { error } = (await onSetStatus(m, selectedEventId, status, cell.key)) || {};
+                  if (error) setRosterError(error);
+                }}
+                className="dvbc-tap"
+                style={{
+                  width: 30, height: 30, borderRadius: 9, border: `1px solid ${status === cell.key ? "transparent" : C.lilacLine}`,
+                  background: status === cell.key ? cell.activeBg : "transparent",
+                  color: status === cell.key ? cell.activeFg : C.inkSoft,
+                  fontWeight: 700, fontSize: 11.5, cursor: "pointer",
+                }}
+              >
+                {cell.label}
+              </button>
+            ))}
+          </div>
+        </div>
       );
     }
 
@@ -1368,7 +1443,10 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
         key={m.id}
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}
       >
-        {row}
+        {identity}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Pill tone={status || "gold"}>{status || "not marked"}</Pill>
+        </div>
       </div>
     );
   };
@@ -1377,7 +1455,7 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
     <div style={{ paddingBottom: 110 }}>
       <TopHeader
         title="Attendance"
-        subtitle={isAdmin ? "Tap an event, then tap a member to change status" : "Vote, check in, and view the register per event"}
+        subtitle={isAdmin ? "Tap P / A / E next to a member to mark their status" : "Vote, check in, and view the register per event"}
       />
 
       {isAdmin && (
@@ -1615,6 +1693,35 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
                   <AlertCircle size={13} /> {rosterError}
                 </div>
               )}
+
+              {isAdmin && selectedEventId && (() => {
+                const unmarkedCount = members.filter((m) => !statusByMember[m.id]).length;
+                return unmarkedCount > 0 ? (
+                  <div style={{ margin: "16px 24px 0" }}>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm(`Mark all ${unmarkedCount} unmarked member(s) as Present? You can still flip individual people afterward.`)) return;
+                        setBulkFillBusy(true);
+                        setRosterError("");
+                        const unmarkedIds = members.filter((m) => !statusByMember[m.id]).map((m) => m.id);
+                        const { error } = (await onMarkUnmarkedPresent(selectedEventId, unmarkedIds)) || {};
+                        if (error) setRosterError(error);
+                        setBulkFillBusy(false);
+                      }}
+                      disabled={bulkFillBusy}
+                      className="dvbc-tap"
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%",
+                        background: C.sageBg, color: C.sage, fontWeight: 700, fontSize: 12.5, padding: "12px 0",
+                        borderRadius: 12, border: "none", cursor: bulkFillBusy ? "default" : "pointer",
+                      }}
+                    >
+                      <CheckSquare size={14} />
+                      {bulkFillBusy ? "Marking…" : `Mark ${unmarkedCount} unmarked as Present`}
+                    </button>
+                  </div>
+                ) : null;
+              })()}
 
               <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
                 <Search size={15} color={C.inkSoft} />
@@ -1907,6 +2014,23 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <Pill>{p.tag}</Pill>
+                {isAdmin ? (
+                  <button
+                    onClick={() => { haptic(8); onUpdate(p.id, { is_ready: !p.is_ready }); }}
+                    className="dvbc-tap"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4, border: "none", cursor: "pointer",
+                      background: p.is_ready ? C.sageBg : C.lilacSoft, color: p.is_ready ? C.sage : C.inkSoft,
+                      fontSize: 10.5, fontWeight: 700, padding: "6px 10px", borderRadius: 999,
+                    }}
+                  >
+                    <CheckSquare size={11} /> {p.is_ready ? "Ready" : "Mark Ready"}
+                  </button>
+                ) : p.is_ready ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, color: C.sage, fontSize: 10.5, fontWeight: 700 }}>
+                    <CheckSquare size={11} /> Ready
+                  </div>
+                ) : null}
                 {p.audio_url && (
                   <OfflineToggle
                     downloaded={downloadedIds.has(p.id)} busy={downloadBusyId === p.id}
@@ -4133,6 +4257,30 @@ export default function App() {
     return { error: error?.message };
   }, []);
 
+  // Direct set (spreadsheet-style): tap the exact status cell for a member. Tapping the
+  // already-active status clears the record back to "not marked".
+  const setEventAttendance = useCallback(async (member, eventId, currentStatus, targetStatus) => {
+    haptic(8);
+    if (currentStatus === targetStatus) {
+      const { error } = await supabase.from("attendance_records").delete().eq("member_id", member.id).eq("event_id", eventId);
+      return { error: error?.message };
+    }
+    const { error } = await supabase
+      .from("attendance_records")
+      .upsert({ member_id: member.id, event_id: eventId, status: targetStatus }, { onConflict: "member_id,event_id" });
+    return { error: error?.message };
+  }, []);
+
+  // Bulk-fill: set every member who has no record yet for this event to "present" in one go —
+  // the common "default everyone in, then flip the few absentees" workflow.
+  const markUnmarkedPresent = useCallback(async (eventId, memberIds) => {
+    if (!memberIds.length) return { error: null };
+    haptic([10, 30, 10]);
+    const rows = memberIds.map((id) => ({ member_id: id, event_id: eventId, status: "present" }));
+    const { error } = await supabase.from("attendance_records").upsert(rows, { onConflict: "member_id,event_id" });
+    return { error: error?.message };
+  }, []);
+
   const checkInToEvent = useCallback(async (eventId) => {
     if (!profile) return;
     setCheckingIn(true);
@@ -4306,13 +4454,14 @@ export default function App() {
   const isAdmin = !!profile.is_admin;
   let content;
   if (screen === "dashboard") content = (
-    <Dashboard profile={profile} members={members} events={events} posts={posts} isAdmin={isAdmin} onSubmitPost={submitPost} onNav={setScreen}
+    <Dashboard profile={profile} members={members} events={events} posts={posts} pieces={libraryPieces} isAdmin={isAdmin} onSubmitPost={submitPost} onNav={setScreen}
       unreadCount={unreadPostCount + unreadChatCount} onCheckIn={checkInToEvent}
       checkingIn={checkingIn} checkInError={checkInError} />
   );
   else if (screen === "attendance") content = (
     <Attendance members={members} loading={loadingMembers} isAdmin={isAdmin} profile={profile}
       events={events} loadingEvents={loadingEvents} onCycle={cycleEventAttendance}
+      onSetStatus={setEventAttendance} onMarkUnmarkedPresent={markUnmarkedPresent}
       onCheckIn={checkInToEvent} checkingIn={checkingIn} checkInError={checkInError}
       onCreateEvent={createEvent} onUpdateEvent={updateEvent} />
   );
