@@ -32,6 +32,13 @@ const GRADIENT = `linear-gradient(135deg, ${C.garnetDark} 0%, ${C.garnet} 45%, $
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/625qw7lnZ6C7tYDOs7ioC3?s=sh&p=a&mlu=4";
 const HERO_PHOTOS = [photoImg, photoImg2, photoImg3];
+const VAPID_PUBLIC_KEY = "BDzWf6BxsVtZVzYvLjyGQhjDhelmBo80UzyOW_MWrIyft90hWzOK_uq7e8C9aCtdLxWURx4KkBv0v_THjrJxu2s";
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
 
 /* ---------- Theming: light/dark token sets, applied by mutating C in place ---------- */
 const LIGHT_THEME = { ...C };
@@ -71,6 +78,30 @@ function store_get(key, fallback) {
 function haptic(pattern = 10) {
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
 }
+
+/* ---------- Synthesized notification chime (no audio asset needed) ---------- */
+let _audioCtx = null;
+function playChime() {
+  try {
+    if (!store.get("dvbc-sound-enabled", true)) return;
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === "suspended") _audioCtx.resume();
+    const now = _audioCtx.currentTime;
+    [[880, 0], [1320, 0.09]].forEach(([freq, delay]) => {
+      const osc = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now + delay);
+      gain.gain.linearRampToValueAtTime(0.14, now + delay + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.35);
+      osc.connect(gain).connect(_audioCtx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.4);
+    });
+  } catch (e) { /* audio unsupported/blocked */ }
+}
+
 const AVATAR_PALETTE = [
   { bg: "#F1EDFC", fg: "#7A56D6" }, { bg: "#E7F1E9", fg: "#3E7A50" }, { bg: "#FBEAF1", fg: "#B23368" },
   { bg: "#F6EFD8", fg: "#8A6C24" }, { bg: "#E3F0FA", fg: "#2E6FA0" }, { bg: "#F4E7DA", fg: "#A05A2E" },
@@ -220,6 +251,39 @@ const ONBOARDING_SLIDES = [
   { Icon: CheckSquare, title: "Track Attendance", body: "Check in to rehearsals and events right from your phone the moment check-in opens." },
   { Icon: Music2, title: "Announcements & Library", body: "Catch every update on Home, and pull up scores or recordings anytime in Library." },
 ];
+/* ---------- Lightweight in-app toast (new post/message alerts) ---------- */
+function Toast({ toast, onClose }) {
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(onClose, 4000);
+    return () => clearTimeout(id);
+  }, [toast, onClose]);
+
+  if (!toast) return null;
+  return (
+    <div
+      onClick={onClose}
+      className="dvbc-screen-enter"
+      style={{
+        position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 12px)", left: 16, right: 16, zIndex: 9998,
+        background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: "13px 14px",
+        boxShadow: "0 10px 28px rgba(36,18,70,0.22)", display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer",
+      }}
+    >
+      <div style={{
+        width: 32, height: 32, borderRadius: "50%", background: GRADIENT, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Bell size={14} color="#fff" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>{toast.title}</div>
+        <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{toast.body}</div>
+      </div>
+    </div>
+  );
+}
+
 function OnboardingTour({ profile }) {
   const key = profile?.id ? `dvbc-onboarded-${profile.id}` : null;
   const [visible, setVisible] = useState(false);
@@ -2862,7 +2926,7 @@ function StaticPage({ title, content, onBack }) {
   );
 }
 
-function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onRemoveMember, onToggleAdmin, onUploadAvatar, avatarUploading, avatarError, onNavSettings, darkMode, onToggleDarkMode }) {
+function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onRemoveMember, onToggleAdmin, onUploadAvatar, avatarUploading, avatarError, onNavSettings, darkMode, onToggleDarkMode, soundEnabled, onToggleSound, pushSubscribed, pushBusy, onEnablePush, onDisablePush }) {
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => m.approval_status === "pending");
   const approvedMembers = members.filter((m) => m.approval_status === "approved");
@@ -2991,8 +3055,42 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             }} />
           </div>
         </div>
+        <div
+          onClick={() => { haptic(8); onToggleSound?.(); }}
+          className="dvbc-tap"
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink, cursor: "pointer" }}
+        >
+          Sound Effects
+          <div style={{
+            width: 42, height: 24, borderRadius: 999, background: soundEnabled ? GRADIENT : C.lilacLine,
+            position: "relative", transition: "background 0.2s ease", flexShrink: 0,
+          }}>
+            <div style={{
+              position: "absolute", top: 2, left: soundEnabled ? 20 : 2, width: 20, height: 20, borderRadius: "50%",
+              background: "#fff", transition: "left 0.2s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            }} />
+          </div>
+        </div>
+        <div
+          onClick={() => { if (pushBusy) return; pushSubscribed ? onDisablePush?.() : onEnablePush?.(); }}
+          className="dvbc-tap"
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink, cursor: pushBusy ? "default" : "pointer" }}
+        >
+          <div>
+            Push Notifications
+            {pushBusy && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 1 }}>Updating…</div>}
+          </div>
+          <div style={{
+            width: 42, height: 24, borderRadius: 999, background: pushSubscribed ? GRADIENT : C.lilacLine,
+            position: "relative", transition: "background 0.2s ease", flexShrink: 0, opacity: pushBusy ? 0.6 : 1,
+          }}>
+            <div style={{
+              position: "absolute", top: 2, left: pushSubscribed ? 20 : 2, width: 20, height: 20, borderRadius: "50%",
+              background: "#fff", transition: "left 0.2s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            }} />
+          </div>
+        </div>
         {[
-          { label: "Notifications", nav: null },
           { label: "Privacy", nav: "privacy" },
           { label: "About De Voci Belli Chorale", nav: "about" },
         ].map(({ label, nav }) => (
@@ -3963,6 +4061,53 @@ export default function App() {
     applyTheme(darkMode ? "dark" : "light");
     store.set("dvbc-dark-mode", darkMode);
   }, [darkMode]);
+  const [soundEnabled, setSoundEnabled] = useState(() => store.get("dvbc-sound-enabled", true));
+  useEffect(() => { store.set("dvbc-sound-enabled", soundEnabled); }, [soundEnabled]);
+  const [toast, setToast] = useState(null);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    navigator.serviceWorker.getRegistration("/push-sw.js").then(async (reg) => {
+      if (!reg) return;
+      const sub = await reg.pushManager.getSubscription();
+      setPushSubscribed(!!sub);
+    }).catch(() => {});
+  }, []);
+  const enablePush = useCallback(async () => {
+    if (!profile?.id || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") { setPushBusy(false); return; }
+      const reg = await navigator.serviceWorker.register("/push-sw.js", { scope: "/push-sw.js" });
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      const json = sub.toJSON();
+      await supabase.from("push_subscriptions").upsert({
+        member_id: profile.id, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth,
+      }, { onConflict: "endpoint" });
+      setPushSubscribed(true);
+      haptic(10);
+    } catch (e) { /* permission denied or unsupported */ }
+    setPushBusy(false);
+  }, [profile?.id]);
+  const disablePush = useCallback(async () => {
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration("/push-sw.js");
+      const sub = await reg?.pushManager.getSubscription();
+      if (sub) {
+        await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setPushSubscribed(false);
+      haptic(10);
+    } catch (e) { /* ignore */ }
+    setPushBusy(false);
+  }, []);
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [favorites, setFavorites] = useState(() => store.get("dvbc-favorites", []));
@@ -4102,10 +4247,17 @@ export default function App() {
       .channel("posts-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => loadPosts())
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => loadPosts())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, (payload) => {
+        if (payload.new?.author_id === profile?.id) return; // don't toast your own post
+        const body = String(payload.new?.content || "").slice(0, 100);
+        setToast({ title: "New Announcement", body });
+        playChime();
+        haptic(12);
+      })
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [session, loadPosts]);
+  }, [session, loadPosts, profile?.id]);
 
   const submitPost = useCallback(async (content) => {
     if (!profile) return;
@@ -4176,6 +4328,12 @@ export default function App() {
       .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, () => loadConversations())
       .on("postgres_changes", { event: "*", schema: "public", table: "conversation_participants" }, () => loadConversations())
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => loadConversations())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
+        if (payload.new?.sender_id === profile?.id) return; // don't toast your own message
+        setToast({ title: "New Message", body: String(payload.new?.content || "").slice(0, 100) });
+        playChime();
+        haptic(12);
+      })
       .subscribe();
 
     return () => supabase.removeChannel(channel);
@@ -4492,6 +4650,8 @@ export default function App() {
       onRemoveMember={removeMember} onToggleAdmin={toggleMemberAdmin}
       avatarUploading={avatarUploading} avatarError={avatarError}
       darkMode={darkMode} onToggleDarkMode={() => setDarkMode((v) => !v)}
+      soundEnabled={soundEnabled} onToggleSound={() => setSoundEnabled((v) => !v)}
+      pushSubscribed={pushSubscribed} pushBusy={pushBusy} onEnablePush={enablePush} onDisablePush={disablePush}
       onNavSettings={(nav) => setScreen(nav)} />
   );
 
@@ -4503,6 +4663,7 @@ export default function App() {
       <div key={screen} className="dvbc-screen-enter">{content}</div>
       {showBottomNav && <BottomNav screen={screen} onNav={setScreen} />}
       <OnboardingTour profile={profile} />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
                                                                                         }
