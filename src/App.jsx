@@ -2926,7 +2926,7 @@ function StaticPage({ title, content, onBack }) {
   );
 }
 
-function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onRemoveMember, onToggleAdmin, onUploadAvatar, avatarUploading, avatarError, onNavSettings, darkMode, onToggleDarkMode, soundEnabled, onToggleSound, pushSubscribed, pushBusy, onEnablePush, onDisablePush }) {
+function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onRemoveMember, onToggleAdmin, onUploadAvatar, avatarUploading, avatarError, onNavSettings, darkMode, onToggleDarkMode, soundEnabled, onToggleSound, pushSubscribed, pushBusy, onEnablePush, onDisablePush, isIOS, isStandalone }) {
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => m.approval_status === "pending");
   const approvedMembers = members.filter((m) => m.approval_status === "approved");
@@ -3071,25 +3071,35 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             }} />
           </div>
         </div>
-        <div
-          onClick={() => { if (pushBusy) return; pushSubscribed ? onDisablePush?.() : onEnablePush?.(); }}
-          className="dvbc-tap"
-          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink, cursor: pushBusy ? "default" : "pointer" }}
-        >
-          <div>
-            Push Notifications
-            {pushBusy && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 1 }}>Updating…</div>}
+        {isIOS && !isStandalone ? (
+          <div style={{ padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+            <div style={{ fontSize: 13.5, color: C.ink, fontWeight: 600 }}>Push Notifications</div>
+            <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 3, lineHeight: 1.5 }}>
+              On iPhone, Safari only allows push alerts for apps added to your Home Screen. Tap the Share icon, then
+              "Add to Home Screen" — open the app from there afterward and this toggle will work.
+            </div>
           </div>
-          <div style={{
-            width: 42, height: 24, borderRadius: 999, background: pushSubscribed ? GRADIENT : C.lilacLine,
-            position: "relative", transition: "background 0.2s ease", flexShrink: 0, opacity: pushBusy ? 0.6 : 1,
-          }}>
+        ) : (
+          <div
+            onClick={() => { if (pushBusy) return; pushSubscribed ? onDisablePush?.() : onEnablePush?.(); }}
+            className="dvbc-tap"
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink, cursor: pushBusy ? "default" : "pointer" }}
+          >
+            <div>
+              Push Notifications
+              {pushBusy && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 1 }}>Updating…</div>}
+            </div>
             <div style={{
-              position: "absolute", top: 2, left: pushSubscribed ? 20 : 2, width: 20, height: 20, borderRadius: "50%",
-              background: "#fff", transition: "left 0.2s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-            }} />
+              width: 42, height: 24, borderRadius: 999, background: pushSubscribed ? GRADIENT : C.lilacLine,
+              position: "relative", transition: "background 0.2s ease", flexShrink: 0, opacity: pushBusy ? 0.6 : 1,
+            }}>
+              <div style={{
+                position: "absolute", top: 2, left: pushSubscribed ? 20 : 2, width: 20, height: 20, borderRadius: "50%",
+                background: "#fff", transition: "left 0.2s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+              }} />
+            </div>
           </div>
-        </div>
+        )}
         {[
           { label: "Privacy", nav: "privacy" },
           { label: "About De Voci Belli Chorale", nav: "about" },
@@ -4063,6 +4073,28 @@ export default function App() {
   }, [darkMode]);
   const [soundEnabled, setSoundEnabled] = useState(() => store.get("dvbc-sound-enabled", true));
   useEffect(() => { store.set("dvbc-sound-enabled", soundEnabled); }, [soundEnabled]);
+
+  // iOS Safari only supports Web Push for a PWA that's been "Added to Home Screen" — not
+  // in a regular browser tab. We detect both so the UI can guide iOS users correctly.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+  // iOS also refuses to play any audio (including Web Audio API tones) until it's been
+  // "unlocked" by a real user gesture. Prime it silently on the very first tap anywhere.
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (_audioCtx.state === "suspended") _audioCtx.resume();
+      } catch (e) { /* unsupported */ }
+      window.removeEventListener("touchend", unlock);
+      window.removeEventListener("click", unlock);
+    };
+    window.addEventListener("touchend", unlock, { once: true });
+    window.addEventListener("click", unlock, { once: true });
+    return () => { window.removeEventListener("touchend", unlock); window.removeEventListener("click", unlock); };
+  }, []);
+
   const [toast, setToast] = useState(null);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
@@ -4652,6 +4684,7 @@ export default function App() {
       darkMode={darkMode} onToggleDarkMode={() => setDarkMode((v) => !v)}
       soundEnabled={soundEnabled} onToggleSound={() => setSoundEnabled((v) => !v)}
       pushSubscribed={pushSubscribed} pushBusy={pushBusy} onEnablePush={enablePush} onDisablePush={disablePush}
+      isIOS={isIOS} isStandalone={isStandalone}
       onNavSettings={(nav) => setScreen(nav)} />
   );
 
