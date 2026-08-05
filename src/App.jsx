@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
-  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff } from "lucide-react";
+  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import { supabase } from "./supabaseClient";
@@ -28,6 +28,197 @@ const C = {
 
 const GRADIENT = `linear-gradient(135deg, ${C.garnetDark} 0%, ${C.garnet} 45%, ${C.plum} 100%)`;
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
+const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/625qw7lnZ6C7tYDOs7ioC3?s=sh&p=a&mlu=4";
+
+/* ---------- Theming: light/dark token sets, applied by mutating C in place ---------- */
+const LIGHT_THEME = { ...C };
+const DARK_THEME = {
+  garnet: "#9C86E8",
+  garnetDark: "#150C29",
+  plum: "#B29CF2",
+  lilac: "#4A3C7A",
+  lilacSoft: "#241A3D",
+  lilacLine: "#372B5C",
+  ink: "#EFE9FA",
+  inkSoft: "#A79BC9",
+  card: "#1B1330",
+  parchment: "#100A1F",
+  sage: "#8FD1A0",
+  sageBg: "#1E3324",
+  roseDeep: "#F28FB1",
+  roseBg: "#3A1B28",
+  amberBg: "#3A2E14",
+  amberText: "#E8CC7A",
+};
+function applyTheme(mode) {
+  Object.assign(C, mode === "dark" ? DARK_THEME : LIGHT_THEME);
+}
+// Apply saved preference immediately at module load, before first render, to avoid a flash.
+applyTheme(store_get("dvbc-dark-mode", false) ? "dark" : "light");
+function store_get(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+/* ---------- Small utilities: haptics + per-person avatar color ---------- */
+function haptic(pattern = 10) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
+}
+const AVATAR_PALETTE = [
+  { bg: "#F1EDFC", fg: "#7A56D6" }, { bg: "#E7F1E9", fg: "#3E7A50" }, { bg: "#FBEAF1", fg: "#B23368" },
+  { bg: "#F6EFD8", fg: "#8A6C24" }, { bg: "#E3F0FA", fg: "#2E6FA0" }, { bg: "#F4E7DA", fg: "#A05A2E" },
+  { bg: "#EAE6FA", fg: "#5B4AA8" }, { bg: "#E9F5EE", fg: "#2E8067" },
+];
+function avatarColorFor(name) {
+  const str = name || "?";
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+/* ---------- Shared shimmer/skeleton loading block ---------- */
+function Skeleton({ height = 14, width = "100%", radius = 8, style = {} }) {
+  return (
+    <div
+      className="dvbc-skeleton"
+      style={{ height, width, borderRadius: radius, background: C.lilacSoft, ...style }}
+    />
+  );
+}
+function BrandSpinner({ label = "Loading…" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0", gap: 10 }}>
+      <div className="dvbc-spin" style={{
+        width: 30, height: 30, borderRadius: "50%",
+        border: `3px solid ${C.lilacLine}`, borderTopColor: C.plum,
+      }} />
+      <div style={{ fontSize: 12.5, color: C.inkSoft }}>{label}</div>
+    </div>
+  );
+}
+
+/* ---------- Circular ring progress (attendance, pieces-ready, etc.) ---------- */
+function RingProgress({ value = 0, size = 64, strokeWidth = 7, color, track, children }) {
+  const pct = Math.max(0, Math.min(100, value));
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - pct / 100);
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track || C.lilacLine} strokeWidth={strokeWidth} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color || C.garnet} strokeWidth={strokeWidth}
+          strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 0.6s ease" }}
+        />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Confetti burst (check-in celebration) ---------- */
+const CONFETTI_COLORS = ["#7A56D6", "#C6B8F0", "#4C2E9E", "#F6C453", "#57C7A0"];
+function ConfettiBurst({ burstKey }) {
+  if (!burstKey) return null;
+  const pieces = Array.from({ length: 22 }, (_, i) => i);
+  return (
+    <div key={burstKey} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}>
+      {pieces.map((i) => {
+        const left = 45 + Math.random() * 10;
+        const dx = (Math.random() - 0.5) * 220;
+        const delay = Math.random() * 0.15;
+        const dur = 0.9 + Math.random() * 0.5;
+        const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+        const size = 6 + Math.random() * 5;
+        return (
+          <span
+            key={i}
+            style={{
+              position: "absolute", top: "38%", left: `${left}%`, width: size, height: size * 0.5,
+              background: color, borderRadius: 2,
+              animation: `dvbcConfetti ${dur}s ease-out ${delay}s forwards`,
+              "--dx": `${dx}px`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------- First-time onboarding tour ---------- */
+const ONBOARDING_SLIDES = [
+  { Icon: Home, title: "Welcome to DVBC", body: "Your home for rehearsals, scores, and everything chorale — all in one place." },
+  { Icon: CheckSquare, title: "Track Attendance", body: "Check in to rehearsals and events right from your phone the moment check-in opens." },
+  { Icon: Music2, title: "Announcements & Library", body: "Catch every update on Home, and pull up scores or recordings anytime in Library." },
+];
+function OnboardingTour({ profile }) {
+  const key = profile?.id ? `dvbc-onboarded-${profile.id}` : null;
+  const [visible, setVisible] = useState(false);
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!key || profile?.approval_status !== "approved") return;
+    if (!store.get(key, false)) setVisible(true);
+  }, [key, profile?.approval_status]);
+
+  if (!visible) return null;
+  const dismiss = () => {
+    if (key) store.set(key, true);
+    setVisible(false);
+  };
+  const slide = ONBOARDING_SLIDES[step];
+  const isLast = step === ONBOARDING_SLIDES.length - 1;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 10000, background: "rgba(20,12,40,0.55)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 460, background: C.card, borderRadius: "24px 24px 0 0",
+        padding: "28px 24px calc(env(safe-area-inset-bottom, 0px) + 24px)", boxSizing: "border-box",
+      }} className="dvbc-screen-enter">
+        <div style={{
+          width: 56, height: 56, borderRadius: "50%", background: GRADIENT,
+          display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16,
+        }}>
+          <slide.Icon size={24} color="#fff" />
+        </div>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 19, color: C.ink }}>{slide.title}</div>
+        <div style={{ fontSize: 13.5, color: C.inkSoft, marginTop: 8, lineHeight: 1.5 }}>{slide.body}</div>
+
+        <div style={{ display: "flex", gap: 6, marginTop: 22 }}>
+          {ONBOARDING_SLIDES.map((_, i) => (
+            <div key={i} style={{ flex: 1, height: 4, borderRadius: 999, background: i <= step ? C.plum : C.lilacLine }} />
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          {!isLast && (
+            <button onClick={dismiss} className="dvbc-tap" style={{ flex: 1, background: "transparent", border: `1px solid ${C.lilacLine}`, color: C.inkSoft, fontWeight: 600, fontSize: 13, padding: "12px 0", borderRadius: 12, cursor: "pointer" }}>
+              Skip
+            </button>
+          )}
+          <button
+            onClick={() => { haptic(8); isLast ? dismiss() : setStep((s) => s + 1); }}
+            className="dvbc-tap"
+            style={{ flex: 1, background: GRADIENT, border: "none", color: "#fff", fontWeight: 700, fontSize: 13, padding: "12px 0", borderRadius: 12, cursor: "pointer" }}
+          >
+            {isLast ? "Get Started" : "Next"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const PRIVACY_POLICY_TEXT = `Effective Date: July 31, 2026
 
@@ -589,6 +780,32 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
   const displayName = profile?.name ? profile.name.split(" ")[0] : "Member";
 
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const touchStartY = useRef(null);
+  const scrollRef = useRef(null);
+  const PULL_THRESHOLD = 64;
+
+  const handleTouchStart = (e) => {
+    if (scrollRef.current && scrollRef.current.scrollTop <= 0) touchStartY.current = e.touches[0].clientY;
+    else touchStartY.current = null;
+  };
+  const handleTouchMove = (e) => {
+    if (touchStartY.current === null) return;
+    const diff = e.touches[0].clientY - touchStartY.current;
+    if (diff > 0) setPullY(Math.min(diff * 0.5, 90));
+  };
+  const handleTouchEnd = () => {
+    if (pullY > PULL_THRESHOLD) {
+      setRefreshing(true);
+      haptic(15);
+      setTimeout(() => { setRefreshTick((t) => t + 1); setRefreshing(false); }, 500);
+    }
+    setPullY(0);
+    touchStartY.current = null;
+  };
+
   const [attendancePct, setAttendancePct] = useState(null);
   useEffect(() => {
     if (!profile?.id) return;
@@ -600,7 +817,7 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
         setAttendancePct(rows.length ? Math.round((rows.filter((r) => r.status === "present").length / rows.length) * 100) : 0);
       });
     return () => { active = false; };
-  }, [profile?.id]);
+  }, [profile?.id, refreshTick]);
 
   // Nearest event that hasn't ended yet (ongoing takes priority over merely upcoming).
   const now = Date.now();
@@ -618,8 +835,19 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
     supabase.from("attendance_records").select("status").eq("member_id", profile.id).eq("event_id", nextEvent.id).maybeSingle()
       .then(({ data }) => { if (active) setMyEventRecord(data || null); });
     return () => { active = false; };
-  }, [profile?.id, nextEvent?.id, checkingIn]);
+  }, [profile?.id, nextEvent?.id, checkingIn, refreshTick]);
   const alreadyCheckedIn = myEventRecord?.status === "present";
+
+  // Celebrate a successful check-in with confetti + a haptic tick.
+  const [confettiKey, setConfettiKey] = useState(0);
+  const wasCheckedIn = useRef(false);
+  useEffect(() => {
+    if (alreadyCheckedIn && !wasCheckedIn.current) {
+      setConfettiKey((k) => k + 1);
+      haptic([10, 40, 10]);
+    }
+    wasCheckedIn.current = alreadyCheckedIn;
+  }, [alreadyCheckedIn]);
 
   const announcements = (posts || []).slice(0, 3).map((p) => ({
     id: p.id,
@@ -633,6 +861,7 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
   const submitAnnouncement = async () => {
     if (!draft.trim() || !onSubmitPost) return;
     setPosting(true);
+    haptic(10);
     await onSubmitPost(draft.trim());
     setPosting(false);
     setDraft("");
@@ -640,7 +869,22 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
   };
 
   return (
-    <div style={{ paddingBottom: 110 }}>
+    <div
+      ref={scrollRef}
+      style={{ paddingBottom: 110, minHeight: "100%", overflowY: "auto" }}
+      onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+    >
+      <ConfettiBurst burstKey={confettiKey} />
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", height: pullY > 0 || refreshing ? 44 : 0,
+        overflow: "hidden", transition: refreshing ? "none" : "height 0.2s ease",
+      }}>
+        <div className={refreshing ? "dvbc-spin" : ""} style={{
+          width: 22, height: 22, borderRadius: "50%", border: `2.5px solid ${C.lilacLine}`, borderTopColor: C.plum,
+          transform: refreshing ? "none" : `rotate(${Math.min(pullY, PULL_THRESHOLD) * 3.6}deg)`,
+          opacity: Math.min(pullY / PULL_THRESHOLD, 1),
+        }} />
+      </div>
       <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div style={{ fontSize: 12, color: C.inkSoft }}>{greeting}</div>
@@ -695,7 +939,7 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
             )}
             {nextEvent.track_attendance && (
               <div
-                onClick={(e) => { e.stopPropagation(); if (checkInOpen && !alreadyCheckedIn && !checkingIn) onCheckIn(nextEvent.id); }}
+                onClick={(e) => { e.stopPropagation(); if (checkInOpen && !alreadyCheckedIn && !checkingIn) { haptic(10); onCheckIn(nextEvent.id); } }}
                 className="dvbc-tap"
                 style={{
                   marginTop: 14, textAlign: "center", fontWeight: 700, fontSize: 12.5, padding: 11, borderRadius: 12,
@@ -716,15 +960,37 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
         )}
 
         <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Your Attendance</div>
+          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+            <RingProgress value={attendancePct ?? 0} size={46} strokeWidth={5} color={C.garnet} track={C.lilacLine}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</span>
+            </RingProgress>
+            <div style={{ fontSize: 11, color: C.inkSoft }}>Your<br />Attendance</div>
           </button>
           <button onClick={() => onNav("library")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>6/8</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Pieces Ready</div>
           </button>
         </div>
+
+        <a
+          href={WHATSAPP_GROUP_LINK} target="_blank" rel="noopener noreferrer"
+          className="dvbc-tap"
+          style={{
+            display: "flex", alignItems: "center", gap: 10, marginTop: 12, textDecoration: "none",
+            background: "#25D366", color: "#fff", borderRadius: 16, padding: "14px 16px",
+          }}
+        >
+          <div style={{
+            width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.22)",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <MessageCircle size={17} color="#fff" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Join our WhatsApp Group</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.85)", marginTop: 1 }}>Chat with the chorale outside the app</div>
+          </div>
+        </a>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
           <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Announcements</div>
@@ -770,7 +1036,10 @@ function Dashboard({ profile, members, events, posts, isAdmin, onSubmitPost, onN
           </div>
         )}
         {announcements.length === 0 && (
-          <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No announcements yet.</div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "22px 0 14px", color: C.inkSoft }}>
+            <Bell size={22} color={C.lilac} />
+            <div style={{ fontSize: 12.5 }}>No announcements yet.</div>
+          </div>
         )}
         {announcements.map((a) => (
           <div key={a.id} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.lilacLine}`, alignItems: "flex-start" }}>
@@ -1052,11 +1321,12 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
   const renderMemberRow = (m) => {
     const status = statusByMember[m.id] || null;
     const record = records.find((r) => r.member_id === m.id);
+    const avColor = avatarColorFor(m.name);
     const row = (
       <>
         <div style={{
           width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
-          background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+          background: avColor.bg, color: avColor.fg, display: "flex", alignItems: "center", justifyContent: "center",
           fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
         }}>
           {m.avatar_url
@@ -1131,7 +1401,12 @@ function Attendance({ members, loading, onCycle, isAdmin, profile, events, loadi
 
       {/* Event picker */}
       <div style={{ display: "flex", gap: 8, padding: "16px 24px 0", overflowX: "auto" }}>
-        {loadingEvents && <div style={{ fontSize: 12, color: C.inkSoft }}>Loading events…</div>}
+        {loadingEvents && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Skeleton height={54} radius={14} />
+            <Skeleton height={54} radius={14} />
+          </div>
+        )}
         {!loadingEvents && sortedEvents.length === 0 && (
           <div style={{ fontSize: 12, color: C.inkSoft }}>No events yet{isAdmin ? " — create one above." : "."}</div>
         )}
@@ -1784,7 +2059,7 @@ function Messages({
           <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             <div style={{
               width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
-              background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+              background: avatarColorFor(openPostData.author?.name).bg, color: avatarColorFor(openPostData.author?.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
               fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
             }}>
               {openPostData.author?.avatar_url
@@ -1814,7 +2089,7 @@ function Messages({
             <div key={c.id} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
               <div style={{
                 width: 30, height: 30, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
-                background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                background: avatarColorFor(c.author?.name).bg, color: avatarColorFor(c.author?.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
                 fontFamily: "Lora, serif", fontWeight: 600, fontSize: 11,
               }}>
                 {c.author?.avatar_url
@@ -1942,7 +2217,7 @@ function Messages({
         <div style={{ padding: "18px 24px 0" }}>
           <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
 
-          {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+          {loading && <BrandSpinner />}
           {!loading && posts.length === 0 && (
             <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No posts yet.</div>
           )}
@@ -2006,7 +2281,7 @@ function Messages({
             </button>
           </div>
 
-          {loadingConversations && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+          {loadingConversations && <BrandSpinner />}
           {!loadingConversations && conversations.length === 0 && (
             <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No chats yet — start one above.</div>
           )}
@@ -2316,7 +2591,7 @@ function Executives({ isAdmin }) {
           )}
         </div>
 
-        {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+        {loading && <BrandSpinner />}
         {!loading && executives.length === 0 && (
           <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No executives added yet.</div>
         )}
@@ -2463,9 +2738,30 @@ function StaticPage({ title, content, onBack }) {
   );
 }
 
-function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onUploadAvatar, avatarUploading, avatarError, onNavSettings }) {
+function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onRemoveMember, onToggleAdmin, onUploadAvatar, avatarUploading, avatarError, onNavSettings, darkMode, onToggleDarkMode }) {
   const displayName = profile?.name || "Member";
   const pending = members.filter((m) => m.approval_status === "pending");
+  const approvedMembers = members.filter((m) => m.approval_status === "approved");
+  const [memberActionError, setMemberActionError] = useState("");
+
+  const handleRemove = async (m) => {
+    if (!window.confirm(`Remove ${m.name} from the chorale roster? This deletes their member record and can't be undone.`)) return;
+    setMemberActionError("");
+    try {
+      await onRemoveMember(m.id);
+    } catch (err) {
+      setMemberActionError(err?.message || "Couldn't remove this member.");
+    }
+  };
+
+  const handleToggleAdmin = async (m) => {
+    setMemberActionError("");
+    try {
+      await onToggleAdmin(m.id, !m.is_admin);
+    } catch (err) {
+      setMemberActionError(err?.message || "Couldn't update admin status.");
+    }
+  };
 
   const [attendancePct, setAttendancePct] = useState(null); // null while loading, number once known
   useEffect(() => {
@@ -2547,13 +2843,30 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
             <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "—" : presentNow}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present, next event</div>
           </div>
-          <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
-            <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>My attendance</div>
+          <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <RingProgress value={attendancePct ?? 0} size={36} strokeWidth={4} color={C.garnet} track={C.lilacLine} />
+            <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: C.garnet, marginTop: -4 }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontSize: 11, color: C.inkSoft }}>My attendance</div>
           </div>
         </div>
 
         <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Settings</div>
+        <div
+          onClick={() => { haptic(8); onToggleDarkMode?.(); }}
+          className="dvbc-tap"
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, fontSize: 13.5, color: C.ink, cursor: "pointer" }}
+        >
+          Dark Mode
+          <div style={{
+            width: 42, height: 24, borderRadius: 999, background: darkMode ? GRADIENT : C.lilacLine,
+            position: "relative", transition: "background 0.2s ease", flexShrink: 0,
+          }}>
+            <div style={{
+              position: "absolute", top: 2, left: darkMode ? 20 : 2, width: 20, height: 20, borderRadius: "50%",
+              background: "#fff", transition: "left 0.2s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            }} />
+          </div>
+        </div>
         {[
           { label: "Notifications", nav: null },
           { label: "Privacy", nav: "privacy" },
@@ -2585,7 +2898,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
               <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
-                  background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: avatarColorFor(m.name).bg, color: avatarColorFor(m.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
                   fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
                 }}>
                   {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
@@ -2610,6 +2923,59 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onU
                 </div>
               </div>
             ))}
+          </>
+        )}
+
+        {isAdmin && (
+          <>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>All Members</div>
+            {memberActionError && (
+              <div style={{ fontSize: 12, color: C.roseDeep, background: C.roseBg, borderRadius: 10, padding: "8px 12px", marginBottom: 8 }}>
+                {memberActionError}
+              </div>
+            )}
+            {approvedMembers.length === 0 && (
+              <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "6px 0 4px" }}>No approved members yet.</div>
+            )}
+            {approvedMembers.map((m) => {
+              const isSelf = m.id === profile.id;
+              return (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+                    background: avatarColorFor(m.name).bg, color: avatarColorFor(m.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
+                    fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
+                  }}>
+                    {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{m.name}{isSelf ? " (you)" : ""}</div>
+                    <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 1 }}>
+                      {m.part}{m.is_admin ? " · Admin" : ""}
+                    </div>
+                  </div>
+                  {!isSelf && (
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={() => handleToggleAdmin(m)} className="dvbc-tap"
+                        style={{
+                          background: m.is_admin ? C.amberBg : C.lilacSoft, color: m.is_admin ? C.amberText : C.plum,
+                          fontWeight: 700, fontSize: 11.5, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                        }}
+                      >
+                        {m.is_admin ? "Revoke Admin" : "Make Admin"}
+                      </button>
+                      <button
+                        onClick={() => handleRemove(m)} className="dvbc-tap"
+                        style={{ background: C.roseBg, color: C.roseDeep, fontWeight: 700, fontSize: 11.5, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer" }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
 
@@ -3345,7 +3711,7 @@ function PracticeLists({ isAdmin, profile }) {
           </button>
         )}
 
-        {loading && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "20px 0" }}>Loading…</div>}
+        {loading && <BrandSpinner />}
         {!loading && filteredGroupLists.length === 0 && (
           <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No group practice lists yet.</div>
         )}
@@ -3468,6 +3834,11 @@ export default function App() {
   const [screen, setScreen] = useState("dashboard");
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
   const [profile, setProfile] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => store.get("dvbc-dark-mode", false));
+  useEffect(() => {
+    applyTheme(darkMode ? "dark" : "light");
+    store.set("dvbc-dark-mode", darkMode);
+  }, [darkMode]);
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [favorites, setFavorites] = useState(() => store.get("dvbc-favorites", []));
@@ -3845,12 +4216,26 @@ export default function App() {
   }, [profile]);
 
   const approveMember = useCallback(async (memberId) => {
+    haptic(10);
     await supabase.from("members").update({ approval_status: "approved" }).eq("id", memberId);
   }, []);
 
   const rejectMember = useCallback(async (memberId) => {
+    haptic(10);
     await supabase.from("members").update({ approval_status: "rejected" }).eq("id", memberId);
   }, []);
+
+  const removeMember = useCallback(async (memberId) => {
+    if (memberId === profile?.id) return; // can't remove yourself
+    haptic([10, 30, 10]);
+    await supabase.from("members").delete().eq("id", memberId);
+  }, [profile?.id]);
+
+  const toggleMemberAdmin = useCallback(async (memberId, makeAdmin) => {
+    if (memberId === profile?.id) return; // can't change your own admin status
+    haptic(10);
+    await supabase.from("members").update({ is_admin: makeAdmin }).eq("id", memberId);
+  }, [profile?.id]);
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -3864,12 +4249,30 @@ export default function App() {
     .dvbc-tap { transition: opacity 0.15s ease, transform 0.15s ease; }
     .dvbc-tap:active { opacity: 0.7; transform: scale(0.97); }
     .dvbc-row:active { background: ${C.lilacSoft}; }
+    .dvbc-skeleton { position: relative; overflow: hidden; background: ${C.lilacSoft}; }
+    .dvbc-skeleton::after {
+      content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, ${C.lilacLine}, transparent);
+      animation: dvbcShimmer 1.4s infinite;
+    }
+    @keyframes dvbcShimmer { 100% { transform: translateX(100%); } }
+    .dvbc-spin { animation: dvbcSpin 0.8s linear infinite; }
+    @keyframes dvbcSpin { to { transform: rotate(360deg); } }
+    @keyframes dvbcConfetti {
+      0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+      100% { opacity: 0; transform: translate(var(--dx), 240px) rotate(540deg); }
+    }
+    .dvbc-screen-enter { animation: dvbcFadeIn 0.2s ease; }
+    @keyframes dvbcFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   `;
 
   if (session === undefined) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.parchment }}>
-        <div style={{ color: C.inkSoft, fontSize: 13 }}>Loading…</div>
+        <BrandSpinner />
       </div>
     );
   }
@@ -3886,7 +4289,7 @@ export default function App() {
   if (!profile) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.parchment }}>
-        <div style={{ color: C.inkSoft, fontSize: 13 }}>Loading your profile…</div>
+        <BrandSpinner label="Loading your profile…" />
       </div>
     );
   }
@@ -3937,7 +4340,9 @@ export default function App() {
   else if (screen === "profile") content = (
     <Profile profile={profile} members={members} onLogout={logout} isAdmin={isAdmin}
       onApprove={approveMember} onReject={rejectMember} onUploadAvatar={uploadAvatar}
+      onRemoveMember={removeMember} onToggleAdmin={toggleMemberAdmin}
       avatarUploading={avatarUploading} avatarError={avatarError}
+      darkMode={darkMode} onToggleDarkMode={() => setDarkMode((v) => !v)}
       onNavSettings={(nav) => setScreen(nav)} />
   );
 
@@ -3946,8 +4351,9 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
       <style>{TAP_STYLES}</style>
-      {content}
+      <div key={screen} className="dvbc-screen-enter">{content}</div>
       {showBottomNav && <BottomNav screen={screen} onNav={setScreen} />}
+      <OnboardingTour profile={profile} />
     </div>
   );
                                                                                         }
