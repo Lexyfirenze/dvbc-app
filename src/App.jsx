@@ -4275,6 +4275,53 @@ function BottomNav({ screen, onNav }) {
 }
 
 /* ---------- Root app ---------- */
+/* ---------- Error boundary: catches a crash in one screen without blanking the whole app ---------- */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error("DVBC screen crashed:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: "50vh", display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", padding: "40px 24px", textAlign: "center",
+        }}>
+          <AlertCircle size={30} color={C.roseDeep} />
+          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginTop: 14 }}>Something went wrong</div>
+          <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 8, lineHeight: 1.5, maxWidth: 280 }}>
+            This screen ran into a problem. You can try again, or head back to the dashboard — nothing else in the app is affected.
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button
+              onClick={() => this.setState({ hasError: false })} className="dvbc-tap"
+              style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, color: C.ink, fontWeight: 700, fontSize: 12.5, padding: "10px 18px", borderRadius: 12, cursor: "pointer" }}
+            >
+              Try Again
+            </button>
+            {this.props.onGoHome && (
+              <button
+                onClick={() => { this.setState({ hasError: false }); this.props.onGoHome(); }} className="dvbc-tap"
+                style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 18px", borderRadius: 12, border: "none", cursor: "pointer" }}
+              >
+                Go to Home
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState("dashboard");
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
@@ -4906,7 +4953,9 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
       <style>{TAP_STYLES}</style>
-      <div key={screen} className="dvbc-screen-enter">{content}</div>
+      <ErrorBoundary key={screen} onGoHome={() => setScreen("dashboard")}>
+        <div key={screen} className="dvbc-screen-enter">{content}</div>
+      </ErrorBoundary>
       {showBottomNav && <BottomNav screen={screen} onNav={setScreen} />}
       <OnboardingTour profile={profile} />
       <Toast toast={toast} onClose={() => setToast(null)} />
