@@ -1296,9 +1296,211 @@ function EventFormPanel({ initial, onCancel, onSave }) {
   );
 }
 
+/* ---------- Cumulative attendance register, rolled up across every event ---------- */
+const REGISTER_RANGES = [
+  { key: "all", label: "All time", n: null },
+  { key: "4", label: "Last 4", n: 4 },
+  { key: "8", label: "Last 8", n: 8 },
+  { key: "12", label: "Last 12", n: 12 },
+];
+
+function CumulativeRegister({ members, loadingMembers }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [range, setRange] = useState("all");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const { data, error: err } = await supabase.from("attendance_records").select("member_id, status, rehearsal_date");
+    if (err) { setError(err.message || "Could not load the register."); setLoading(false); return; }
+    setRows(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const channel = supabase
+      .channel("cumulative-attendance")
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance_records" }, () => load())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [load]);
+
+  // Distinct rehearsal dates present in the data, most recent first.
+  const allDates = [...new Set(rows.map((r) => r.rehearsal_date).filter(Boolean))].sort((a, b) => new Date(b) - new Date(a));
+  const activeRange = REGISTER_RANGES.find((r) => r.key === range) || REGISTER_RANGES[0];
+  const includedDates = activeRange.n ? new Set(allDates.slice(0, activeRange.n)) : null;
+  const filteredRows = includedDates ? rows.filter((r) => r.rehearsal_date && includedDates.has(r.rehearsal_date)) : rows;
+  const rangeRehearsalCount = includedDates ? includedDates.size : allDates.length;
+
+  const byMember = {};
+  filteredRows.forEach((r) => {
+    if (!byMember[r.member_id]) byMember[r.member_id] = { present: 0, absent: 0, excused: 0, total: 0 };
+    byMember[r.member_id].total += 1;
+    if (r.status === "present") byMember[r.member_id].present += 1;
+    else if (r.status === "absent") byMember[r.member_id].absent += 1;
+    else if (r.status === "excused") byMember[r.member_id].excused += 1;
+  });
+
+  const sectionOrder = ["Soprano", "Alto", "Tenor", "Bass"];
+  const groupedSections = sectionOrder
+    .map((section) => ({
+      section,
+      label: section === "Bass" ? "Basses" : `${section}s`,
+      rows: members
+        .filter((m) => m.part.startsWith(section))
+        .map((m) => ({ member: m, stats: byMember[m.id] || { present: 0, absent: 0, excused: 0, total: 0 } }))
+        .sort((a, b) => a.member.name.localeCompare(b.member.name)),
+    }))
+    .filter((g) => g.rows.length > 0);
+
+  const busy = loading || loadingMembers;
+  const allFlatRows = groupedSections.flatMap((g) => g.rows.map((r) => ({ ...r, section: g.label })));
+
+  const exportCSV = () => {
+    const header = ["Name", "Voice Part", "Present", "Absent", "Excused", "Rehearsals Tracked", "Rate"];
+    const lines = [header.join(",")];
+    allFlatRows.forEach(({ member: m, stats }) => {
+      const rate = stats.total ? `${Math.round((stats.present / stats.total) * 100)}%` : "";
+      lines.push([`"${m.name.replace(/"/g, '""')}"`, m.part, stats.present, stats.absent, stats.excused, stats.total, rate].join(","));
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dvbc-attendance-register-${activeRange.key}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const printRegister = () => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const tableRows = allFlatRows.map(({ member: m, stats, section }) => {
+      const rate = stats.total ? `${Math.round((stats.present / stats.total) * 100)}%` : "—";
+      return `<tr><td>${section}</td><td>${m.name}</td><td>${m.part}</td><td>${stats.present}</td><td>${stats.absent}</td><td>${stats.excused}</td><td>${stats.total}</td><td>${rate}</td></tr>`;
+    }).join("");
+    win.document.write(`<!DOCTYPE html><html><head><title>DVBC Attendance Register</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:24px;color:#231A3B;}
+        h1{font-size:18px;margin-bottom:2px;}
+        p{font-size:12px;color:#666;margin-top:0;}
+        table{width:100%;border-collapse:collapse;margin-top:16px;}
+        th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px;text-align:left;}
+        th{background:#f1edfc;}
+      </style></head><body>
+      <h1>DVBC Cumulative Attendance Register</h1>
+      <p>Range: ${activeRange.label} · ${rangeRehearsalCount} rehearsal${rangeRehearsalCount === 1 ? "" : "s"} · Generated ${new Date().toLocaleDateString()}</p>
+      <table><thead><tr><th>Section</th><th>Name</th><th>Part</th><th>Present</th><th>Absent</th><th>Excused</th><th>Total</th><th>Rate</th></tr></thead>
+      <tbody>${tableRows}</tbody></table>
+      </body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  };
+
+  return (
+    <div style={{ padding: "6px 24px 0" }}>
+      <div style={{ margin: "10px 0 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 4 }}>Cumulative Register</div>
+        <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5 }}>
+          Present, absent, and excused counts across recorded rehearsals, with each member's overall attendance rate.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, padding: "14px 0 0", overflowX: "auto" }}>
+        {REGISTER_RANGES.map((r) => (
+          <Chip key={r.key} active={range === r.key} onClick={() => setRange(r.key)}>{r.label}</Chip>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, padding: "10px 0 0" }}>
+        <button
+          onClick={exportCSV} disabled={busy || allFlatRows.length === 0} className="dvbc-tap"
+          style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            background: C.card, border: `1.4px solid ${C.lilacLine}`, color: C.ink, fontWeight: 700, fontSize: 12,
+            padding: "10px 0", borderRadius: 12, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <Download size={13} /> CSV
+        </button>
+        <button
+          onClick={printRegister} disabled={busy || allFlatRows.length === 0} className="dvbc-tap"
+          style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            background: C.card, border: `1.4px solid ${C.lilacLine}`, color: C.ink, fontWeight: 700, fontSize: 12,
+            padding: "10px 0", borderRadius: 12, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <FileText size={13} /> Print
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, margin: "12px 0 0" }}>
+          <AlertCircle size={13} /> {error}
+        </div>
+      )}
+
+      {busy && (
+        <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading register…</div>
+      )}
+
+      {!busy && groupedSections.map((g, i) => (
+        <div key={g.section} style={{ marginTop: i === 0 ? 20 : 22 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>{g.label}</div>
+            <div style={{ fontSize: 12, color: C.inkSoft }}>({g.rows.length})</div>
+          </div>
+          {g.rows.map(({ member: m, stats }) => {
+            const avColor = avatarColorFor(m.name);
+            const rate = stats.total ? Math.round((stats.present / stats.total) * 100) : null;
+            return (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                  background: avColor.bg, color: avColor.fg, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+                }}>
+                  {m.avatar_url
+                    ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
+                  <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>
+                    {m.part} · {stats.total} rehearsal{stats.total === 1 ? "" : "s"} tracked
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <Pill tone="present">{stats.present}P</Pill>
+                  <Pill tone="absent">{stats.absent}A</Pill>
+                  <Pill tone="excused">{stats.excused}E</Pill>
+                </div>
+                <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: rate === null ? C.inkSoft : C.garnet, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
+                  {rate === null ? "—" : `${rate}%`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {!busy && groupedSections.length === 0 && (
+        <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No attendance recorded yet.</div>
+      )}
+    </div>
+  );
+}
+
 function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [view, setView] = useState("event"); // "event" | "register"
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
 
   const sortedEvents = [...events].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -1522,6 +1724,15 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
         subtitle={isAdmin ? "Tap P / A / E next to a member to mark their status" : "Vote, check in, and view the register per event"}
       />
 
+      <div style={{ display: "flex", gap: 8, padding: "16px 24px 0" }}>
+        <Chip active={view === "event"} onClick={() => setView("event")}>This Event</Chip>
+        <Chip active={view === "register"} onClick={() => setView("register")}>Cumulative Register</Chip>
+      </div>
+
+      {view === "register" && <CumulativeRegister members={members} loadingMembers={loading} />}
+
+      {view === "event" && (
+      <>
       {isAdmin && (
         <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
           <button
@@ -1824,6 +2035,8 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
             </>
           )}
         </>
+      )}
+      </>
       )}
     </div>
   );
@@ -4067,14 +4280,6 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
   const [profile, setProfile] = useState(null);
   const [darkMode, setDarkMode] = useState(() => store.get("dvbc-dark-mode", false));
-  const toggleDarkMode = useCallback(() => {
-    setDarkMode((prev) => {
-      const next = !prev;
-      applyTheme(next ? "dark" : "light");
-      store.set("dvbc-dark-mode", next);
-      return next;
-    });
-  }, []);
   useEffect(() => {
     applyTheme(darkMode ? "dark" : "light");
     store.set("dvbc-dark-mode", darkMode);
@@ -4689,7 +4894,7 @@ export default function App() {
       onApprove={approveMember} onReject={rejectMember} onUploadAvatar={uploadAvatar}
       onRemoveMember={removeMember} onToggleAdmin={toggleMemberAdmin}
       avatarUploading={avatarUploading} avatarError={avatarError}
-      darkMode={darkMode} onToggleDarkMode={toggleDarkMode}
+      darkMode={darkMode} onToggleDarkMode={() => setDarkMode((v) => !v)}
       soundEnabled={soundEnabled} onToggleSound={() => setSoundEnabled((v) => !v)}
       pushSubscribed={pushSubscribed} pushBusy={pushBusy} onEnablePush={enablePush} onDisablePush={disablePush}
       isIOS={isIOS} isStandalone={isStandalone}
