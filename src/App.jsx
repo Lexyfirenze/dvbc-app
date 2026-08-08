@@ -7,6 +7,7 @@ import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
 import photoImg3 from "./assets/chorale-photo-3.jpg";
 import { supabase } from "./supabaseClient";
+import { generateICS, downloadICS } from './utils/dvbc-ics-export.js';
 
 /* ---------- Design tokens: indigo / violet / lavender interface ---------- */
 const C = {
@@ -4823,6 +4824,23 @@ export default function App() {
     await supabase.from("members").update({ approval_status: "rejected" }).eq("id", memberId);
   }, []);
 
+  const exportCalendar = useCallback(() => {
+  if (!events || events.length === 0) {
+    setToast({ title: "No events", body: "No rehearsals to export yet." });
+    return;
+  }
+  const upcomingEvents = events.filter((e) => new Date(e.end_time) >= new Date());
+  if (upcomingEvents.length === 0) {
+    setToast({ title: "No upcoming events", body: "All rehearsals are in the past." });
+    return;
+  }
+  haptic(10);
+  const icsContent = generateICS(upcomingEvents, "De Voci Belli Chorale Rehearsals");
+  const filename = `dvbc-rehearsals-${new Date().toISOString().slice(0, 10)}.ics`;
+  downloadICS(icsContent, filename);
+  setToast({ title: "Calendar exported", body: `${upcomingEvents.length} rehearsal(s) ready to import.` });
+}, [events]);
+  
   const removeMember = useCallback(async (memberId) => {
     if (memberId === profile?.id) return; // can't remove yourself
     haptic([10, 30, 10]);
