@@ -1498,7 +1498,7 @@ function CumulativeRegister({ members, loadingMembers }) {
   );
 }
 
-function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent }) {
+function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent })function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent, onExportCalendar }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [view, setView] = useState("event"); // "event" | "register"
@@ -1739,6 +1739,16 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
           <button
             onClick={() => { setEditingEvent(null); setShowEventForm(true); }} className="dvbc-tap"
             style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
+            <div style={{ padding: "12px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={onExportCalendar}
+          className="dvbc-tap"
+          title="Download rehearsals to your phone calendar"
+          style={{ display: "flex", alignItems: "center", gap: 6, background: C.card, border: `1.4px solid ${C.lilacLine}`, color: C.plum, fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, cursor: "pointer" }}
+        >
+          <Download size={14} /> Export to Calendar
+        </button>
+      </div>
           >
             <Plus size={14} /> New Event
           </button>
@@ -4931,7 +4941,7 @@ export default function App() {
       events={events} loadingEvents={loadingEvents} onCycle={cycleEventAttendance}
       onSetStatus={setEventAttendance} onMarkUnmarkedPresent={markUnmarkedPresent}
       onCheckIn={checkInToEvent} checkingIn={checkingIn} checkInError={checkInError}
-      onCreateEvent={createEvent} onUpdateEvent={updateEvent} />
+      onCreateEvent={createEvent} onUpdateEvent={updateEvent} onExportCalendar={exportCalendar}/>
   );
   else if (screen === "library") content = (
     <Library
