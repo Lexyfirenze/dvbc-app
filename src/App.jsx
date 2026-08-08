@@ -75,6 +75,7 @@ function store_get(key, fallback) {
   }
 }
 
+
 /* ---------- Small utilities: haptics + per-person avatar color ---------- */
 function haptic(pattern = 10) {
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
@@ -124,7 +125,7 @@ function Skeleton({ height = 14, width = "100%", radius = 8, style = {} }) {
     />
   );
 }
-function BrandSpinner({ label = "Loading…" }) {
+function BrandSpinner({ label = "Loadingâ€¦" }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0", gap: 10 }}>
       <div className="dvbc-spin" style={{
@@ -248,7 +249,7 @@ function ConfettiBurst({ burstKey }) {
 
 /* ---------- First-time onboarding tour ---------- */
 const ONBOARDING_SLIDES = [
-  { Icon: Home, title: "Welcome to DVBC", body: "Your home for rehearsals, scores, and everything chorale — all in one place." },
+  { Icon: Home, title: "Welcome to DVBC", body: "Your home for rehearsals, scores, and everything chorale â€” all in one place." },
   { Icon: CheckSquare, title: "Track Attendance", body: "Check in to rehearsals and events right from your phone the moment check-in opens." },
   { Icon: Music2, title: "Announcements & Library", body: "Catch every update on Home, and pull up scores or recordings anytime in Library." },
 ];
@@ -469,7 +470,7 @@ function formatEventTimeRange(event) {
   const opts = { hour: "2-digit", minute: "2-digit" };
   const start = new Date(event.start_time).toLocaleTimeString("en-NG", opts);
   const end = new Date(event.end_time).toLocaleTimeString("en-NG", opts);
-  return `${formatEventDay(event.start_time)} · ${start} – ${end}`;
+  return `${formatEventDay(event.start_time)} Â· ${start} â€“ ${end}`;
 }
 
 // <input type="datetime-local"> uses local wall-clock time with no timezone; this
@@ -481,7 +482,7 @@ function toDatetimeLocalValue(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/* ---------- Offline media (Cache Storage API — sandboxed inside the app/browser;
+/* ---------- Offline media (Cache Storage API â€” sandboxed inside the app/browser;
    nothing is written to the device's own Downloads folder or file system) ---------- */
 const OFFLINE_AUDIO_CACHE = "dvbc-audio-v1";
 const OFFLINE_SHEETS_CACHE = "dvbc-sheets-v1";
@@ -556,7 +557,7 @@ async function removeSheetOffline(path) {
 }
 
 // Returns an in-memory blob URL for a downloaded sheet, or null if it hasn't
-// been saved for offline use — the PDF still only ever lives inside the
+// been saved for offline use â€” the PDF still only ever lives inside the
 // browser's app-sandboxed cache, never the device's shared file system.
 async function getSheetOfflineBlobUrl(path) {
   if (!path || !offlineSupported()) return null;
@@ -570,7 +571,7 @@ function OfflineToggle({ downloaded, busy, onDownload, onRemove, size = 15 }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); if (busy) return; downloaded ? onRemove() : onDownload(); }}
-      disabled={busy} className="dvbc-tap" title={downloaded ? "Downloaded for offline use — tap to remove" : "Save for offline use"}
+      disabled={busy} className="dvbc-tap" title={downloaded ? "Downloaded for offline use â€” tap to remove" : "Save for offline use"}
       style={{ background: "none", border: "none", cursor: busy ? "default" : "pointer", display: "flex", padding: 0, opacity: busy ? 0.5 : 1 }}
     >
       {downloaded ? <CheckSquare size={size} color={C.sage} /> : <Download size={size} color={C.inkSoft} />}
@@ -600,7 +601,7 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/* ---------- Local persistence (favorites + read state — this device) ---------- */
+/* ---------- Local persistence (favorites + read state â€” this device) ---------- */
 const store = {
   get(key, fallback) {
     try {
@@ -712,7 +713,7 @@ function LoginScreen({ onAuthed }) {
           if (insertError) throw insertError;
         }
         if (!data.session) {
-          setError("Account created — you can sign in now.");
+          setError("Account created â€” you can sign in now.");
           setMode("signin");
           setBusy(false);
           return;
@@ -761,7 +762,7 @@ function LoginScreen({ onAuthed }) {
         <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 22 }}>
           {mode === "signin"
             ? "Sign in to view rehearsals, mark attendance, and reach your music library."
-            : "Register once — your name and voice part will appear on the shared attendance sheet."}
+            : "Register once â€” your name and voice part will appear on the shared attendance sheet."}
         </div>
 
         <form onSubmit={submit}>
@@ -804,7 +805,7 @@ function LoginScreen({ onAuthed }) {
             <Lock size={16} color={C.inkSoft} />
             <input
               value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••••" type={showPw ? "text" : "password"}
+              placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" type={showPw ? "text" : "password"}
               style={{ border: "none", outline: "none", fontSize: 13.5, flex: 1, background: "transparent", color: C.ink }}
             />
             <button type="button" onClick={() => setShowPw((v) => !v)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
@@ -826,11 +827,11 @@ function LoginScreen({ onAuthed }) {
               opacity: busy ? 0.8 : 1, marginTop: mode === "signin" ? 20 : 4,
             }}
           >
-            {busy ? "Please wait…" : mode === "signin" ? "Sign In" : "Create Account"}
+            {busy ? "Please waitâ€¦" : mode === "signin" ? "Sign In" : "Create Account"}
           </button>
         </form>
 
-        <div style={{ textAlign: "center", fontSize: 11, color: "#BBAEC4", margin: "18px 0", letterSpacing: 1 }}>— OR —</div>
+        <div style={{ textAlign: "center", fontSize: 11, color: "#BBAEC4", margin: "18px 0", letterSpacing: 1 }}>â€” OR â€”</div>
         <button
           onClick={() => { setMode(mode === "signin" ? "register" : "signin"); setError(""); }}
           className="dvbc-tap"
@@ -976,7 +977,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
 
   const announcements = (posts || []).slice(0, 3).map((p) => ({
     id: p.id,
-    title: p.content.length > 90 ? `${p.content.slice(0, 90)}…` : p.content,
+    title: p.content.length > 90 ? `${p.content.slice(0, 90)}â€¦` : p.content,
     time: `Posted ${timeAgo(p.created_at)}`,
   }));
 
@@ -1067,7 +1068,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
                   color: alreadyCheckedIn ? "#fff" : checkInOpen ? C.garnet : "rgba(255,255,255,0.6)",
                 }}
               >
-                {alreadyCheckedIn ? "You're checked in ✓" : checkInOpen ? (checkingIn ? "Checking in…" : "Check In") : phase === "ongoing" ? "Tap Attendance to check in" : "Check-in opens closer to the event"}
+                {alreadyCheckedIn ? "You're checked in âœ“" : checkInOpen ? (checkingIn ? "Checking inâ€¦" : "Check In") : phase === "ongoing" ? "Tap Attendance to check in" : "Check-in opens closer to the event"}
               </div>
             )}
             {checkInError && <div style={{ marginTop: 8, fontSize: 11, color: "#FBEAF1" }}>{checkInError}</div>}
@@ -1082,7 +1083,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
           <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
             <RingProgress value={attendancePct ?? 0} size={46} strokeWidth={5} color={C.garnet} track={C.lilacLine}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.garnet }}>{attendancePct === null ? "â€”" : `${attendancePct}%`}</span>
             </RingProgress>
             <div style={{ fontSize: 11, color: C.inkSoft }}>Your<br />Attendance</div>
           </button>
@@ -1135,7 +1136,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write an announcement for the chorale…"
+              placeholder="Write an announcement for the choraleâ€¦"
               rows={3}
               style={{
                 width: "100%", border: "none", outline: "none", resize: "none", fontFamily: "Inter, system-ui, sans-serif",
@@ -1152,7 +1153,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
                   padding: "8px 16px", fontSize: 12.5, fontWeight: 700, cursor: draft.trim() ? "pointer" : "default",
                 }}
               >
-                {posting ? "Posting…" : "Post"}
+                {posting ? "Postingâ€¦" : "Post"}
               </button>
             </div>
           </div>
@@ -1246,8 +1247,7 @@ function EventFormPanel({ initial, onCancel, onSave }) {
         <label style={labelStyle}>Location</label>
         <input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="St. Peter's Anglican Church, Owerri" />
       </div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>        <div style={{ flex: 1 }}>
           <label style={labelStyle}>Starts</label>
           <input type="datetime-local" style={inputStyle} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
         </div>
@@ -1290,7 +1290,7 @@ function EventFormPanel({ initial, onCancel, onSave }) {
           onClick={submit} disabled={saving} className="dvbc-tap"
           style={{ flex: 2, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
         >
-          {saving ? "Saving…" : initial ? "Save Changes" : "Create Event"}
+          {saving ? "Savingâ€¦" : initial ? "Save Changes" : "Create Event"}
         </button>
       </div>
     </div>
@@ -1382,7 +1382,7 @@ function CumulativeRegister({ members, loadingMembers }) {
     const win = window.open("", "_blank");
     if (!win) return;
     const tableRows = allFlatRows.map(({ member: m, stats, section }) => {
-      const rate = stats.total ? `${Math.round((stats.present / stats.total) * 100)}%` : "—";
+      const rate = stats.total ? `${Math.round((stats.present / stats.total) * 100)}%` : "â€”";
       return `<tr><td>${section}</td><td>${m.name}</td><td>${m.part}</td><td>${stats.present}</td><td>${stats.absent}</td><td>${stats.excused}</td><td>${stats.total}</td><td>${rate}</td></tr>`;
     }).join("");
     win.document.write(`<!DOCTYPE html><html><head><title>DVBC Attendance Register</title>
@@ -1395,7 +1395,7 @@ function CumulativeRegister({ members, loadingMembers }) {
         th{background:#f1edfc;}
       </style></head><body>
       <h1>DVBC Cumulative Attendance Register</h1>
-      <p>Range: ${activeRange.label} · ${rangeRehearsalCount} rehearsal${rangeRehearsalCount === 1 ? "" : "s"} · Generated ${new Date().toLocaleDateString()}</p>
+      <p>Range: ${activeRange.label} Â· ${rangeRehearsalCount} rehearsal${rangeRehearsalCount === 1 ? "" : "s"} Â· Generated ${new Date().toLocaleDateString()}</p>
       <table><thead><tr><th>Section</th><th>Name</th><th>Part</th><th>Present</th><th>Absent</th><th>Excused</th><th>Total</th><th>Rate</th></tr></thead>
       <tbody>${tableRows}</tbody></table>
       </body></html>`);
@@ -1449,7 +1449,7 @@ function CumulativeRegister({ members, loadingMembers }) {
       )}
 
       {busy && (
-        <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading register…</div>
+        <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading registerâ€¦</div>
       )}
 
       {!busy && groupedSections.map((g, i) => (
@@ -1475,7 +1475,7 @@ function CumulativeRegister({ members, loadingMembers }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
                   <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>
-                    {m.part} · {stats.total} rehearsal{stats.total === 1 ? "" : "s"} tracked
+                    {m.part} Â· {stats.total} rehearsal{stats.total === 1 ? "" : "s"} tracked
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -1484,7 +1484,7 @@ function CumulativeRegister({ members, loadingMembers }) {
                   <Pill tone="excused">{stats.excused}E</Pill>
                 </div>
                 <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: rate === null ? C.inkSoft : C.garnet, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
-                  {rate === null ? "—" : `${rate}%`}
+                  {rate === null ? "â€”" : `${rate}%`}
                 </div>
               </div>
             );
@@ -1498,7 +1498,7 @@ function CumulativeRegister({ members, loadingMembers }) {
   );
 }
 
-function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent })function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent, onExportCalendar }) {
+function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPresent, isAdmin, profile, events, loadingEvents, onCheckIn, checkingIn, checkInError, onCreateEvent, onUpdateEvent, onExportCalendar }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [view, setView] = useState("event"); // "event" | "register"
@@ -1734,12 +1734,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
 
       {view === "event" && (
       <>
-      {isAdmin && (
-        <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
-          <button
-            onClick={() => { setEditingEvent(null); setShowEventForm(true); }} className="dvbc-tap"
-            style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
-            <div style={{ padding: "12px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ padding: "12px 24px 0", display: "flex", justifyContent: "flex-end" }}>
         <button
           onClick={onExportCalendar}
           className="dvbc-tap"
@@ -1749,6 +1744,12 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
           <Download size={14} /> Export to Calendar
         </button>
       </div>
+
+      {isAdmin && (
+        <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={() => { setEditingEvent(null); setShowEventForm(true); }} className="dvbc-tap"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
           >
             <Plus size={14} /> New Event
           </button>
@@ -1772,7 +1773,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
           </div>
         )}
         {!loadingEvents && sortedEvents.length === 0 && (
-          <div style={{ fontSize: 12, color: C.inkSoft }}>No events yet{isAdmin ? " — create one above." : "."}</div>
+          <div style={{ fontSize: 12, color: C.inkSoft }}>No events yet{isAdmin ? " â€” create one above." : "."}</div>
         )}
         {sortedEvents.map((e) => {
           const active = e.id === selectedEventId;
@@ -1876,7 +1877,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                 )}
 
                 {loadingInterest ? (
-                  <div style={{ fontSize: 12, color: C.inkSoft }}>Loading votes…</div>
+                  <div style={{ fontSize: 12, color: C.inkSoft }}>Loading votesâ€¦</div>
                 ) : (
                   <div style={{ display: "flex", gap: 10 }}>
                     <div style={{ flex: 1, textAlign: "center", background: C.sageBg, borderRadius: 12, padding: "8px 4px" }}>
@@ -1908,10 +1909,10 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                         padding: 12, borderRadius: 12, border: "none", cursor: prefillBusy ? "default" : "pointer", opacity: prefillBusy ? 0.8 : 1,
                       }}
                     >
-                      {prefillBusy ? "Setting register…" : "Set Register From Poll"}
+                      {prefillBusy ? "Setting registerâ€¦" : "Set Register From Poll"}
                     </button>
                     <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 6, textAlign: "center" }}>
-                      Sets each member's status below from their vote — you can still adjust individuals after.
+                      Sets each member's status below from their vote â€” you can still adjust individuals after.
                     </div>
                   </>
                 )}
@@ -1952,7 +1953,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                           cursor: checkInOpen && !checkingIn ? "pointer" : "default",
                         }}
                       >
-                        {checkingIn ? "Checking in…" : "Check In"}
+                        {checkingIn ? "Checking inâ€¦" : "Check In"}
                       </button>
                     </>
                   )}
@@ -2003,7 +2004,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                       }}
                     >
                       <CheckSquare size={14} />
-                      {bulkFillBusy ? "Marking…" : `Mark ${unmarkedCount} unmarked as Present`}
+                      {bulkFillBusy ? "Markingâ€¦" : `Mark ${unmarkedCount} unmarked as Present`}
                     </button>
                   </div>
                 ) : null;
@@ -2012,7 +2013,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
               <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
                 <Search size={15} color={C.inkSoft} />
                 <input
-                  value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search members…"
+                  value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search membersâ€¦"
                   style={{ border: "none", outline: "none", fontSize: 13, flex: 1, background: "transparent", color: C.ink }}
                 />
               </div>
@@ -2025,7 +2026,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
 
               <div style={{ padding: "6px 24px 0" }}>
                 {(loading || loadingRecords) && (
-                  <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading register…</div>
+                  <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading registerâ€¦</div>
                 )}
                 {!loading && !loadingRecords && filtered.length === 0 && (
                   <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>No members match.</div>
@@ -2124,10 +2125,10 @@ function LibraryFormPanel({ initial, onCancel, onSave, onUploadAudio }) {
         </div>
       </div>
       <div style={{ marginBottom: 14 }}>
-        <label style={labelStyle}>Audio (MP3, WAV, M4A — up to 25MB)</label>
+        <label style={labelStyle}>Audio (MP3, WAV, M4A â€” up to 25MB)</label>
         <input type="file" accept="audio/*" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5, color: C.inkSoft }} />
         {existingAudioUrl && !audioFile && (
-          <div style={{ fontSize: 11, color: C.sage, marginTop: 6 }}>Audio already attached — choose a file above to replace it.</div>
+          <div style={{ fontSize: 11, color: C.sage, marginTop: 6 }}>Audio already attached â€” choose a file above to replace it.</div>
         )}
       </div>
       {error && (
@@ -2146,7 +2147,7 @@ function LibraryFormPanel({ initial, onCancel, onSave, onUploadAudio }) {
           onClick={submit} disabled={saving} className="dvbc-tap"
           style={{ flex: 2, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
         >
-          {saving ? "Saving…" : initial ? "Save Changes" : "Add Song"}
+          {saving ? "Savingâ€¦" : initial ? "Save Changes" : "Add Song"}
         </button>
       </div>
     </div>
@@ -2254,7 +2255,7 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
       <div style={{ margin: "16px 24px 0", display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12, padding: "11px 14px" }}>
         <Search size={15} color={C.inkSoft} />
         <input
-          value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title or composer…"
+          value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title or composerâ€¦"
           style={{ border: "none", outline: "none", fontSize: 13, flex: 1, background: "transparent", color: C.ink }}
         />
       </div>
@@ -2273,11 +2274,11 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
 
       <div style={{ padding: "8px 24px 0" }}>
         {loading && (
-          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading library…</div>
+          <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>Loading libraryâ€¦</div>
         )}
         {!loading && filtered.length === 0 && (
           <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 13, padding: "30px 0" }}>
-            {pieces.length === 0 && isAdmin ? "No songs yet — tap Add Song to get started." : "No pieces match."}
+            {pieces.length === 0 && isAdmin ? "No songs yet â€” tap Add Song to get started." : "No pieces match."}
           </div>
         )}
         {!loading && filtered.map((p) => {
@@ -2295,7 +2296,7 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
                   <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
                     <button onClick={() => { setEditingPiece(p); setShowForm(true); }} className="dvbc-tap" style={{ fontSize: 10.5, fontWeight: 700, color: C.plum, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
                     <button onClick={() => handleDelete(p)} disabled={deleteBusyId === p.id} className="dvbc-tap" style={{ fontSize: 10.5, fontWeight: 700, color: C.roseDeep, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                      {deleteBusyId === p.id ? "Removing…" : "Delete"}
+                      {deleteBusyId === p.id ? "Removingâ€¦" : "Delete"}
                     </button>
                   </div>
                 )}
@@ -2495,8 +2496,7 @@ function Messages({
             {(openPostData.comments || []).length} {(openPostData.comments || []).length === 1 ? "Comment" : "Comments"}
           </div>
           {(openPostData.comments || []).length === 0 && (
-            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "6px 0" }}>No comments yet — be the first to reply.</div>
-          )}
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "6px 0" }}>No comments yet â€” be the first to reply.</div>          )}
           {(openPostData.comments || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map((c) => (
             <div key={c.id} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.lilacLine}` }}>
               <div style={{
@@ -2524,7 +2524,7 @@ function Messages({
           padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
         }}>
           <input
-            value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Write a comment…"
+            value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Write a commentâ€¦"
             style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
             onKeyDown={(e) => { if (e.key === "Enter") submitNewComment(); }}
           />
@@ -2559,7 +2559,7 @@ function Messages({
         </div>
 
         <div style={{ flex: 1, padding: "16px 24px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-          {msgs.length === 0 && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 12.5, padding: "20px 0" }}>Say hello 👋</div>}
+          {msgs.length === 0 && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 12.5, padding: "20px 0" }}>Say hello ðŸ‘‹</div>}
           {msgs.map((m) => {
             const mine = m.sender_id === profile?.id;
             return (
@@ -2583,7 +2583,7 @@ function Messages({
             </div>
           )}
           {typingNames.length > 0 && (
-            <div style={{ fontSize: 11.5, color: C.inkSoft, fontStyle: "italic" }}>{typingNames.join(", ")} typing…</div>
+            <div style={{ fontSize: 11.5, color: C.inkSoft, fontStyle: "italic" }}>{typingNames.join(", ")} typingâ€¦</div>
           )}
         </div>
 
@@ -2592,7 +2592,7 @@ function Messages({
           padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
         }}>
           <input
-            value={chatDraft} onChange={(e) => handleChatInputChange(e.target.value)} placeholder="Message…"
+            value={chatDraft} onChange={(e) => handleChatInputChange(e.target.value)} placeholder="Messageâ€¦"
             style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
             onKeyDown={(e) => { if (e.key === "Enter") submitChatMessage(); }}
           />
@@ -2695,7 +2695,7 @@ function Messages({
 
           {loadingConversations && <BrandSpinner />}
           {!loadingConversations && conversations.length === 0 && (
-            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No chats yet — start one above.</div>
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No chats yet â€” start one above.</div>
           )}
 
           {conversations.map((conv) => {
@@ -2759,7 +2759,7 @@ function Messages({
           <div style={{ background: "#fff", width: "100%", borderRadius: "20px 20px 0 0", padding: "20px 24px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New leadership post</div>
             <textarea
-              value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Share an update with the chorale…"
+              value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Share an update with the choraleâ€¦"
               style={{
                 width: "100%", minHeight: 110, border: `1.4px solid ${C.lilacLine}`, borderRadius: 12,
                 padding: "12px 14px", fontSize: 13.5, outline: "none", color: C.ink, resize: "vertical", fontFamily: "inherit",
@@ -2770,7 +2770,7 @@ function Messages({
                 onClick={submitNewPost} disabled={!draft.trim() || posting} className="dvbc-tap"
                 style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: draft.trim() ? "pointer" : "default", opacity: draft.trim() ? 1 : 0.6 }}
               >
-                {posting ? "Posting…" : "Post"}
+                {posting ? "Postingâ€¦" : "Post"}
               </button>
               <button
                 onClick={() => { setComposerOpen(false); setDraft(""); }} className="dvbc-tap"
@@ -3053,7 +3053,7 @@ function Executives({ isAdmin }) {
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button onClick={saveExec} disabled={savingExec} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingExec ? "default" : "pointer", opacity: savingExec ? 0.8 : 1 }}>
-                {savingExec ? "Saving…" : "Save"}
+                {savingExec ? "Savingâ€¦" : "Save"}
               </button>
               <button onClick={resetExecForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
                 Cancel
@@ -3237,11 +3237,11 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             />
           </div>
         </div>
-        {avatarUploading && <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: -6, marginBottom: 6 }}>Uploading photo…</div>}
+        {avatarUploading && <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: -6, marginBottom: 6 }}>Uploading photoâ€¦</div>}
         {avatarError && <div style={{ color: "#FBEAF1", fontSize: 11, marginTop: -6, marginBottom: 6 }}>{avatarError}</div>}
         <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 20 }}>{displayName}</div>
         <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>
-          {profile?.part || ""}{profile?.is_admin ? " · Admin" : ""}
+          {profile?.part || ""}{profile?.is_admin ? " Â· Admin" : ""}
         </div>
       </div>
 
@@ -3252,12 +3252,12 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Registered members</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "—" : presentNow}</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "â€”" : presentNow}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present, next event</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
             <RingProgress value={attendancePct ?? 0} size={36} strokeWidth={4} color={C.garnet} track={C.lilacLine} />
-            <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: C.garnet, marginTop: -4 }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: C.garnet, marginTop: -4 }}>{attendancePct === null ? "â€”" : `${attendancePct}%`}</div>
             <div style={{ fontSize: 11, color: C.inkSoft }}>My attendance</div>
           </div>
         </div>
@@ -3300,7 +3300,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             <div style={{ fontSize: 13.5, color: C.ink, fontWeight: 600 }}>Push Notifications</div>
             <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 3, lineHeight: 1.5 }}>
               On iPhone, Safari only allows push alerts for apps added to your Home Screen. Tap the Share icon, then
-              "Add to Home Screen" — open the app from there afterward and this toggle will work.
+              "Add to Home Screen" â€” open the app from there afterward and this toggle will work.
             </div>
           </div>
         ) : (
@@ -3311,7 +3311,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
           >
             <div>
               Push Notifications
-              {pushBusy && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 1 }}>Updating…</div>}
+              {pushBusy && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 1 }}>Updatingâ€¦</div>}
             </div>
             <div style={{
               width: 42, height: 24, borderRadius: 999, background: pushSubscribed ? GRADIENT : C.lilacLine,
@@ -3407,7 +3407,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{m.name}{isSelf ? " (you)" : ""}</div>
                     <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 1 }}>
-                      {m.part}{m.is_admin ? " · Admin" : ""}
+                      {m.part}{m.is_admin ? " Â· Admin" : ""}
                     </div>
                   </div>
                   {!isSelf && (
@@ -3506,7 +3506,7 @@ function SheetMusicViewer({ path, title, onClose }) {
       <div style={{ flex: 1, position: "relative" }}>
         {!signedUrl && !error && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-            Loading…
+            Loadingâ€¦
           </div>
         )}
         {error && (
@@ -3745,8 +3745,7 @@ function PracticeLists({ isAdmin, profile }) {
         const path = `${bucketFolder}${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: uploadError } = await supabase.storage.from("practice-covers").upload(path, listCoverFile);
         if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from("practice-covers").getPublicUrl(path);
-        cover_url = data.publicUrl;
+        const { data } = supabase.storage.from("practice-covers").getPublicUrl(path);        cover_url = data.publicUrl;
       }
       const payload = {
         title: listForm.title.trim(),
@@ -3826,7 +3825,7 @@ function PracticeLists({ isAdmin, profile }) {
         const pdfPath = `${folder}${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
         const { error: pdfUploadError } = await supabase.storage.from("practice-sheets").upload(pdfPath, trackPdfFile);
         if (pdfUploadError) throw pdfUploadError;
-        // practice-sheets is a private bucket — store the path and sign a URL on demand, not a public URL.
+        // practice-sheets is a private bucket â€” store the path and sign a URL on demand, not a public URL.
         sheet_pdf_url = pdfPath;
       }
       const payload = { title: trackForm.title.trim(), composer: trackForm.composer.trim(), audio_url, sheet_pdf_url, practice_list_id: openListId };
@@ -3880,7 +3879,7 @@ function PracticeLists({ isAdmin, profile }) {
                 onClick={() => (downloadedAudio.has(currentTrack.id) ? removeTrackAudio(currentTrack) : downloadTrackAudio(currentTrack))}
                 disabled={offlineBusyId === `audio-${currentTrack.id}`} className="dvbc-tap"
                 style={{ background: "none", border: "none", display: "flex", cursor: "pointer", padding: 0, opacity: offlineBusyId === `audio-${currentTrack.id}` ? 0.5 : 1 }}
-                title={downloadedAudio.has(currentTrack.id) ? "Downloaded for offline use — tap to remove" : "Save audio for offline use"}
+                title={downloadedAudio.has(currentTrack.id) ? "Downloaded for offline use â€” tap to remove" : "Save audio for offline use"}
               >
                 {downloadedAudio.has(currentTrack.id) ? <CheckSquare size={18} color="#fff" /> : <Download size={18} color="rgba(255,255,255,0.8)" />}
               </button>
@@ -4067,7 +4066,7 @@ function PracticeLists({ isAdmin, profile }) {
               )}
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button onClick={saveTrack} disabled={savingTrack} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingTrack ? "default" : "pointer", opacity: savingTrack ? 0.8 : 1 }}>
-                  {savingTrack ? "Saving…" : "Save"}
+                  {savingTrack ? "Savingâ€¦" : "Save"}
                 </button>
                 <button onClick={resetTrackForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
                   Cancel
@@ -4185,7 +4184,7 @@ function PracticeLists({ isAdmin, profile }) {
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(37,26,44,0.75) 0%, rgba(37,26,44,0.05) 55%, transparent 100%)" }} />
               <div style={{ position: "absolute", left: 12, right: 12, bottom: 10 }}>
                 <div style={{ color: "#fff", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{list.title}</div>
-                <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 10.5, marginTop: 2 }}>{list.voice_part} · {list.tracks.length} track{list.tracks.length === 1 ? "" : "s"}</div>
+                <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 10.5, marginTop: 2 }}>{list.voice_part} Â· {list.tracks.length} track{list.tracks.length === 1 ? "" : "s"}</div>
               </div>
               <div style={{ position: "absolute", right: 10, bottom: 10, width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.9)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Play size={12} color={C.garnet} fill={C.garnet} />
@@ -4230,7 +4229,7 @@ function PracticeLists({ isAdmin, profile }) {
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button onClick={saveList} disabled={savingList} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingList ? "default" : "pointer", opacity: savingList ? 0.8 : 1 }}>
-                {savingList ? "Saving…" : "Save"}
+                {savingList ? "Savingâ€¦" : "Save"}
               </button>
               <button onClick={resetListForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
                 Cancel
@@ -4308,7 +4307,7 @@ class ErrorBoundary extends React.Component {
           <AlertCircle size={30} color={C.roseDeep} />
           <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginTop: 14 }}>Something went wrong</div>
           <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 8, lineHeight: 1.5, maxWidth: 280 }}>
-            This screen ran into a problem. You can try again, or head back to the dashboard — nothing else in the app is affected.
+            This screen ran into a problem. You can try again, or head back to the dashboard â€” nothing else in the app is affected.
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             <button
@@ -4345,7 +4344,7 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(() => store.get("dvbc-sound-enabled", true));
   useEffect(() => { store.set("dvbc-sound-enabled", soundEnabled); }, [soundEnabled]);
 
-  // iOS Safari only supports Web Push for a PWA that's been "Added to Home Screen" — not
+  // iOS Safari only supports Web Push for a PWA that's been "Added to Home Screen" â€” not
   // in a regular browser tab. We detect both so the UI can guide iOS users correctly.
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
@@ -4433,7 +4432,7 @@ export default function App() {
   useEffect(() => { store.set("dvbc-post-seen", postSeenAt); }, [postSeenAt]);
 
   // Ask the browser not to evict this origin's Cache Storage under storage
-  // pressure — protects members' downloaded offline audio/sheet music.
+  // pressure â€” protects members' downloaded offline audio/sheet music.
   // Best-effort: browsers may still say no in a plain (non-installed) tab,
   // but installed + engaged origins are far more likely to be granted this.
   useEffect(() => {
@@ -4732,7 +4731,7 @@ export default function App() {
     return { error: error?.message };
   }, []);
 
-  // Bulk-fill: set every member who has no record yet for this event to "present" in one go —
+  // Bulk-fill: set every member who has no record yet for this event to "present" in one go â€”
   // the common "default everyone in, then flip the few absentees" workflow.
   const markUnmarkedPresent = useCallback(async (eventId, memberIds) => {
     if (!memberIds.length) return { error: null };
@@ -4915,7 +4914,7 @@ export default function App() {
   if (!profile) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.parchment }}>
-        <BrandSpinner label="Loading your profile…" />
+        <BrandSpinner label="Loading your profileâ€¦" />
       </div>
     );
   }
