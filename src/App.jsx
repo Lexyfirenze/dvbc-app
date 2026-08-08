@@ -4067,6 +4067,14 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
   const [profile, setProfile] = useState(null);
   const [darkMode, setDarkMode] = useState(() => store.get("dvbc-dark-mode", false));
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      applyTheme(next ? "dark" : "light");
+      store.set("dvbc-dark-mode", next);
+      return next;
+    });
+  }, []);
   useEffect(() => {
     applyTheme(darkMode ? "dark" : "light");
     store.set("dvbc-dark-mode", darkMode);
@@ -4681,7 +4689,7 @@ export default function App() {
       onApprove={approveMember} onReject={rejectMember} onUploadAvatar={uploadAvatar}
       onRemoveMember={removeMember} onToggleAdmin={toggleMemberAdmin}
       avatarUploading={avatarUploading} avatarError={avatarError}
-      darkMode={darkMode} onToggleDarkMode={() => setDarkMode((v) => !v)}
+      darkMode={darkMode} onToggleDarkMode={toggleDarkMode}
       soundEnabled={soundEnabled} onToggleSound={() => setSoundEnabled((v) => !v)}
       pushSubscribed={pushSubscribed} pushBusy={pushBusy} onEnablePush={enablePush} onDisablePush={disablePush}
       isIOS={isIOS} isStandalone={isStandalone}
