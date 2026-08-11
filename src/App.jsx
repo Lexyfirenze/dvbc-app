@@ -1555,17 +1555,26 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
 
   const myVote = interest.find((v) => v.member_id === profile?.id)?.vote || null;
   const votesByMember = Object.fromEntries(interest.map((v) => [v.member_id, v.vote]));
+  const memberNameById = Object.fromEntries((members || []).map((m) => [m.id, m.name || m.full_name || "Member"]));
+  const excusedNotes = interest.filter((v) => v.vote === "excused" && v.note);
   const availableCount = interest.filter((v) => v.vote === "available").length;
   const excusedCount = interest.filter((v) => v.vote === "excused").length;
 
-  const castVote = async (vote) => {
+  const [excusedNoteDraft, setExcusedNoteDraft] = useState("");
+  const [showExcusedInput, setShowExcusedInput] = useState(false);
+
+  const castVote = async (vote, note) => {
     if (!profile || votingBusy || !selectedEventId) return;
     setVotingBusy(true);
     setVotingError("");
     const { error } = await supabase
       .from("event_interest")
-      .upsert({ event_id: selectedEventId, member_id: profile.id, vote, voted_at: new Date().toISOString() }, { onConflict: "event_id,member_id" });
+      .upsert(
+        { event_id: selectedEventId, member_id: profile.id, vote, note: note || null, voted_at: new Date().toISOString() },
+        { onConflict: "event_id,member_id" }
+      );
     if (error) setVotingError(error.message || "Could not save your vote. Please try again.");
+    else if (vote === "excused") setExcusedNoteDraft("");
     setVotingBusy(false);
   };
 
@@ -1844,7 +1853,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                 </div>
 
                 {!isAdmin && phase !== "past" && (
-                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: showExcusedInput ? 10 : 16 }}>
                     {[
                       { key: "available", label: "Available", tone: "present" },
                       { key: "excused", label: "Excused", tone: "excused" },
@@ -1853,7 +1862,13 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                       const toneColor = opt.tone === "present" ? C.sage : opt.tone === "absent" ? C.roseDeep : C.amberText;
                       return (
                         <button
-                          key={opt.key} onClick={() => castVote(opt.key)} disabled={votingBusy} className="dvbc-tap"
+                          key={opt.key}
+                          onClick={() => {
+                            if (opt.key === "excused") { setShowExcusedInput(true); return; }
+                            setShowExcusedInput(false);
+                            castVote(opt.key);
+                          }}
+                          disabled={votingBusy} className="dvbc-tap"
                           style={{
                             flex: 1, padding: "10px 6px", borderRadius: 12, fontSize: 11.5, fontWeight: 700,
                             border: `1.4px solid ${active ? toneColor : C.lilacLine}`,
@@ -1865,6 +1880,42 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                         </button>
                       );
                     })}
+                  </div>
+                )}
+
+                {!isAdmin && phase !== "past" && showExcusedInput && (
+                  <div style={{ marginBottom: 16 }}>
+                    <input
+                      type="text" value={excusedNoteDraft} onChange={(e) => setExcusedNoteDraft(e.target.value)}
+                      placeholder="Reason (optional)" maxLength={140}
+                      style={{
+                        width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: 12.5,
+                        border: `1.4px solid ${C.lilacLine}`, marginBottom: 8, boxSizing: "border-box",
+                      }}
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => { castVote("excused", excusedNoteDraft); setShowExcusedInput(false); }}
+                        disabled={votingBusy} className="dvbc-tap"
+                        style={{
+                          flex: 1, padding: "9px 6px", borderRadius: 10, fontSize: 11.5, fontWeight: 700,
+                          border: `1.4px solid ${C.amberText}`, background: C.amberText, color: "#fff",
+                          cursor: votingBusy ? "default" : "pointer",
+                        }}
+                      >
+                        Submit
+                      </button>
+                      <button
+                        onClick={() => { setShowExcusedInput(false); setExcusedNoteDraft(""); }}
+                        className="dvbc-tap"
+                        style={{
+                          flex: 1, padding: "9px 6px", borderRadius: 10, fontSize: 11.5, fontWeight: 700,
+                          border: `1.4px solid ${C.lilacLine}`, background: "#fff", color: C.inkSoft, cursor: "pointer",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1886,6 +1937,20 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                       <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.amberText }}>{excusedCount}</div>
                       <div style={{ fontSize: 9.5, color: C.amberText, textTransform: "uppercase", letterSpacing: 0.4 }}>Excused</div>
                     </div>
+                  </div>
+                )}
+
+                {isAdmin && excusedNotes.length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.lilacLine}` }}>
+                    <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>
+                      Excused reasons
+                    </div>
+                    {excusedNotes.map((v) => (
+                      <div key={v.member_id} style={{ fontSize: 11.5, color: C.ink, marginBottom: 6, lineHeight: 1.4 }}>
+                        <span style={{ fontWeight: 700 }}>{memberNameById[v.member_id] || "Member"}:</span>{" "}
+                        <span style={{ color: C.inkSoft }}>{v.note}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
 
