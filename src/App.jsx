@@ -3497,8 +3497,14 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
   const [viewingMemberId, setViewingMemberId] = useState(null);
   const viewingMember = members.find((m) => m.id === viewingMemberId) || null;
 
-  const handleRemove = async (m) => {
-    if (!window.confirm(`Remove ${m.name} from the chorale roster? This deletes their member record and can't be undone.`)) return;
+  const [memberToRemove, setMemberToRemove] = useState(null);
+  const handleRemove = (m) => {
+    setMemberToRemove(m);
+  };
+  const confirmRemove = async () => {
+    const m = memberToRemove;
+    setMemberToRemove(null);
+    if (!m) return;
     setMemberActionError("");
     try {
       await onRemoveMember(m.id);
@@ -3724,6 +3730,31 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
         )}
 
         <>
+          {memberToRemove && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} onClick={() => setMemberToRemove(null)}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: 20, maxWidth: 320, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 8 }}>Remove member?</div>
+                <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 16 }}>
+                  Remove {memberToRemove.name} from the chorale roster? This deletes their member record and can't be undone.
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => setMemberToRemove(null)} className="dvbc-tap"
+                    style={{ flex: 1, background: "#fff", color: C.inkSoft, fontWeight: 700, fontSize: 12.5, padding: "10px 0", borderRadius: 10, border: `1.4px solid ${C.lilacLine}`, cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmRemove} className="dvbc-tap"
+                    style={{ flex: 1, background: C.roseDeep, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer" }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Members</div>
           {memberActionError && (
             <div style={{ fontSize: 12, color: C.roseDeep, background: C.roseBg, borderRadius: 10, padding: "8px 12px", marginBottom: 8 }}>
