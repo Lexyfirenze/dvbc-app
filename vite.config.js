@@ -11,7 +11,7 @@ export default defineConfig({
       manifest: {
         name: "De Voci Belli Chorale",
         short_name: "DVB Chorale",
-        description: "Members portal for De Voci Belli Chorale — rehearsals, attendance, and the music library.",
+        description: "Members portal for De Voci Belli Chorale - rehearsals, attendance, and the music library.",
         start_url: "/",
         scope: "/",
         display: "standalone",
@@ -25,6 +25,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,png,jpg,jpeg,svg,ico}"],
+        mode: "development",
       },
     }),
   ],
