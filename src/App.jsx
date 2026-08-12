@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
-  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone } from "lucide-react";
+  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2 } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
@@ -2493,7 +2493,7 @@ function PostSeenBy({ post, viewerId }) {
 function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
-  onCreateConversation, onSendChatMessage, onMarkConversationRead,
+  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost,
 }) {
   const [tab, setTab] = useState("posts");
   const [openPostId, setOpenPostId] = useState(null);
@@ -2609,7 +2609,20 @@ function Messages({
           <button onClick={() => setOpenPostId(null)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
             <ChevronLeft size={20} color={C.ink} />
           </button>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>Post</div>
+          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink, flex: 1 }}>Post</div>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                if (window.confirm("Delete this announcement? This can't be undone.")) {
+                  onDeletePost(openPostData.id);
+                  setOpenPostId(null);
+                }
+              }}
+              className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}
+            >
+              <Trash2 size={18} color={C.roseDeep} />
+            </button>
+          )}
         </div>
 
         <div style={{ padding: "18px 24px 0" }}>
@@ -5204,6 +5217,12 @@ export default function App() {
     setProfile((prev) => (prev ? { ...prev, phone, address, date_of_birth } : prev));
   }, [profile]);
 
+  const deletePost = useCallback(async (postId) => {
+    const { error } = await supabase.from("posts").delete().eq("id", postId);
+    if (error) { console.error(error); return; }
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
   const approveMember = useCallback(async (memberId) => {
     haptic(10);
     await supabase.from("members").update({ approval_status: "approved" }).eq("id", memberId);
@@ -5338,7 +5357,7 @@ export default function App() {
       loadingConversations={loadingConversations} activeConversationId={activeConversationId}
       onOpenConversation={openConversation} onCloseConversation={closeConversation}
       onCreateConversation={createConversation} onSendChatMessage={sendChatMessage}
-      onMarkConversationRead={markConversationRead} />
+      onMarkConversationRead={markConversationRead} onDeletePost={deletePost} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
   else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
