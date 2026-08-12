@@ -467,7 +467,7 @@ function formatEventDay(iso) {
 }
 
 function formatEventTimeRange(event) {
-  const opts = { hour: "2-digit", minute: "2-digit" };
+  const opts = { hour: "numeric", minute: "2-digit", hour12: true };
   const start = new Date(event.start_time).toLocaleTimeString("en-NG", opts);
   const end = new Date(event.end_time).toLocaleTimeString("en-NG", opts);
   return `${formatEventDay(event.start_time)} · ${start} – ${end}`;
@@ -582,7 +582,7 @@ function OfflineToggle({ downloaded, busy, onDownload, onRemove, size = 15 }) {
 function formatClockTime(iso) {
   if (!iso) return null;
   try {
-    return new Date(iso).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" });
+    return new Date(iso).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Africa/Lagos" });
   } catch (e) {
     return null;
   }
@@ -922,6 +922,47 @@ function TopHeader({ title, subtitle }) {
   );
 }
 
+// Next occurrence of a member's birthday, ignoring year (handles the Dec->Jan wrap).
+function daysUntilBirthday(dob) {
+  if (!dob) return null;
+  const [, m, d] = dob.split("-").map(Number);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let next = new Date(today.getFullYear(), m - 1, d);
+  if (next < today) next = new Date(today.getFullYear() + 1, m - 1, d);
+  return Math.round((next - today) / 86400000);
+}
+function isBirthdayToday(dob) {
+  return daysUntilBirthday(dob) === 0;
+}
+
+function UpcomingBirthdays({ members }) {
+  const upcoming = (members || [])
+    .filter((m) => m.date_of_birth)
+    .map((m) => ({ ...m, daysUntil: daysUntilBirthday(m.date_of_birth) }))
+    .filter((m) => m.daysUntil <= 30)
+    .sort((a, b) => a.daysUntil - b.daysUntil)
+    .slice(0, 5);
+
+  if (upcoming.length === 0) return null;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 16 }}>
+      <div style={{ fontSize: 10.5, letterSpacing: 0.5, fontWeight: 700, color: C.inkSoft, textTransform: "uppercase", marginBottom: 10 }}>
+        🎂 Upcoming Birthdays
+      </div>
+      {upcoming.map((m) => (
+        <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0" }}>
+          <div style={{ fontSize: 13, color: C.ink }}>{m.name}</div>
+          <div style={{ fontSize: 11.5, color: m.daysUntil === 0 ? C.garnet : C.inkSoft, fontWeight: m.daysUntil === 0 ? 700 : 400 }}>
+            {m.daysUntil === 0 ? "Today 🎉" : m.daysUntil === 1 ? "Tomorrow" : formatBirthday(m.date_of_birth)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitPost, onNav, unreadCount = 0, onCheckIn, checkingIn, checkInError }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
@@ -1115,6 +1156,8 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Pieces Ready</div>
           </button>
         </div>
+
+        <UpcomingBirthdays members={members} />
 
         <a
           href={WHATSAPP_GROUP_LINK} target="_blank" rel="noopener noreferrer"
@@ -3708,7 +3751,9 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
                   <div style={{ position: "absolute", bottom: -1, right: -1 }}><PresenceDot online={isOnline(m.last_seen_at)} size={10} /></div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{m.name}{isSelf ? " (you)" : ""}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>
+                    {m.name}{isSelf ? " (you)" : ""}{isBirthdayToday(m.date_of_birth) ? " 🎂" : ""}
+                  </div>
                   <div style={{ fontSize: 10.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 1 }}>
                     {m.part}{m.is_admin ? " · Admin" : ""}
                   </div>
