@@ -2553,7 +2553,7 @@ function VoiceNoteBubble({ src, duration, mine }) {
 function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
-  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall,
+  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall, onEditChatMessage, onDeleteChatMessage,
 }) {
   const [tab, setTab] = useState("posts");
   const [openPostId, setOpenPostId] = useState(null);
@@ -2568,6 +2568,8 @@ function Messages({
   const [groupTitle, setGroupTitle] = useState("");
   const [chatDraft, setChatDraft] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingContent, setEditingContent] = useState("");
   const [typingUsers, setTypingUsers] = useState({}); // { memberId: name }
   const [seenByOpen, setSeenByOpen] = useState(false);
 
@@ -2867,21 +2869,76 @@ function Messages({
           {msgs.length === 0 && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 12.5, padding: "20px 0" }}>Say hello 👋</div>}
           {msgs.map((m) => {
             const mine = m.sender?.id === profile?.id;
+            const isEditing = editingMessageId === m.id;
             return (
-              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 4 }}>
                 {!mine && activeConversation.is_group && (
                   <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 2, marginLeft: 4 }}>{m.sender?.name}</div>
                 )}
-                <div style={{
-                  maxWidth: "78%", padding: m.message_type === "voice_note" ? "10px 12px" : "10px 14px",
-                  borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                  background: mine ? GRADIENT : C.lilacSoft, color: mine ? "#fff" : C.ink, fontSize: 13.5, lineHeight: 1.5,
-                }}>
-                  {m.message_type === "voice_note"
-                    ? <VoiceNoteBubble src={m.audio_url} duration={m.duration_seconds} mine={mine} />
-                    : m.content}
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: mine ? "row-reverse" : "row" }}>
+                  <div style={{
+                    maxWidth: "78%", padding: m.message_type === "voice_note" ? "10px 12px" : "10px 14px",
+                    borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                    background: mine ? GRADIENT : C.lilacSoft, color: mine ? "#fff" : C.ink, fontSize: 13.5, lineHeight: 1.5,
+                  }}>
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        value={editingContent}
+                        onChange={(e) => setEditingContent(e.target.value)}
+                        style={{ width: "100%", border: "none", background: "rgba(255,255,255,0.2)", color: "inherit", borderRadius: 4, padding: "4px 8px", outline: "none", fontFamily: "inherit" }}
+                      />
+                    ) : m.message_type === "voice_note"
+                      ? <VoiceNoteBubble src={m.audio_url} duration={m.duration_seconds} mine={mine} />
+                      : m.content}
+                  </div>
+                  {mine && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (editingContent.trim()) onEditChatMessage(m.id, editingContent.trim());
+                              setEditingMessageId(null);
+                              setEditingContent("");
+                            }}
+                            className="dvbc-tap"
+                            style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: "4px 8px", fontSize: 12, color: C.garnet, fontWeight: 600 }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => { setEditingMessageId(null); setEditingContent(""); }}
+                            className="dvbc-tap"
+                            style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: "4px 8px", fontSize: 12, color: C.inkSoft }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => { setEditingMessageId(m.id); setEditingContent(m.content || ""); }}
+                            className="dvbc-tap"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, opacity: 0.6, fontSize: 11, color: C.inkSoft }}
+                            title="Edit"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => onDeleteChatMessage(m.id)}
+                            className="dvbc-tap"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, opacity: 0.6, fontSize: 11, color: C.roseDeep }}
+                            title="Delete"
+                          >
+                            🗑
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 9.5, color: C.inkSoft, marginTop: 3, marginLeft: mine ? 0 : 4, marginRight: mine ? 4 : 0 }}>{timeAgo(m.created_at)}</div>
+                <div style={{ fontSize: 9.5, color: C.inkSoft, marginTop: 2, marginLeft: mine ? 0 : 4, marginRight: mine ? 4 : 0 }}>{timeAgo(m.created_at)}</div>
               </div>
             );
           })}
@@ -5541,6 +5598,14 @@ export default function App() {
       .eq("member_id", profile.id);
   }, [profile]);
 
+  const editChatMessage = useCallback(async (messageId, newContent) => {
+    await supabase.from("chat_messages").update({ content: newContent }).eq("id", messageId);
+  }, []);
+
+  const deleteChatMessage = useCallback(async (messageId) => {
+    await supabase.from("chat_messages").delete().eq("id", messageId);
+  }, []);
+
   const sendVoiceNote = useCallback(async (conversationId, blob, durationSeconds) => {
     if (!profile) return;
     const ext = blob.type.includes("mp4") ? "m4a" : "webm";
@@ -5860,7 +5925,7 @@ export default function App() {
       onOpenConversation={openConversation} onCloseConversation={closeConversation}
       onCreateConversation={createConversation} onSendChatMessage={sendChatMessage}
       onMarkConversationRead={markConversationRead} onDeletePost={deletePost} onSendVoiceNote={sendVoiceNote}
-      onStartCall={startCall} />
+      onStartCall={startCall} onEditChatMessage={editChatMessage} onDeleteChatMessage={deleteChatMessage} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
   else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
