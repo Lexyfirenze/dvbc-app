@@ -5272,6 +5272,8 @@ export default function App() {
       .eq("conversation_id", conversationId)
       .eq("member_id", profile.id);
   }, [profile]);
+
+  const markConversationRead = useCallback(async (conversationId) => {
     if (!profile) return;
     await supabase
       .from("conversation_participants")
