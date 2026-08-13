@@ -4899,23 +4899,43 @@ function BottomNav({ screen, onNav }) {
     <div style={{
       position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
       background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
-      display: "flex", alignItems: "center", justifyContent: "space-around",
-      paddingTop: 10, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 10px)",
+      boxShadow: "0 -8px 24px rgba(76, 46, 158, 0.08)",
+      display: "flex", alignItems: "flex-end", justifyContent: "space-around",
+      paddingTop: 8, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
     }}>
       {items.map(({ key, label, icon: Icon }) => {
         const active = screen === key;
         return (
           <button
             key={key} onClick={() => onNav(key)} className="dvbc-tap"
-            style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+              padding: "4px 6px 0", flex: 1, position: "relative",
+              transition: "transform 0.18s ease",
+              transform: active ? "translateY(-2px)" : "translateY(0)",
+            }}
           >
             <div style={{
-              width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+              width: active ? 52 : 34, height: 30, borderRadius: 15,
+              display: "flex", alignItems: "center", justifyContent: "center",
               background: active ? GRADIENT : "transparent",
+              boxShadow: active ? "0 6px 14px rgba(76, 46, 158, 0.35)" : "none",
+              transition: "all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)",
             }}>
-              <Icon size={16} color={active ? "#fff" : "#B8ADC0"} />
+              <Icon size={16} color={active ? "#fff" : "#B8ADC0"} strokeWidth={active ? 2.4 : 2} />
             </div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: active ? C.garnet : "#B8ADC0" }}>{label}</div>
+            <div style={{
+              fontSize: 10, fontWeight: active ? 700 : 600,
+              color: active ? C.garnet : "#B8ADC0",
+              transition: "color 0.18s ease",
+            }}>{label}</div>
+            {active && (
+              <div style={{
+                position: "absolute", top: -8, width: 4, height: 4, borderRadius: "50%",
+                background: C.plum,
+              }} />
+            )}
           </button>
         );
       })}
