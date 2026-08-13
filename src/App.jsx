@@ -1,7 +1,9 @@
+import AgoraRTC from "agora-rtc-sdk-ng";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
-  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2, Mic, Square } from "lucide-react";
+  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2, Mic, Square,
+  PhoneOff, Video, VideoOff, MicOff } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
@@ -2551,7 +2553,7 @@ function VoiceNoteBubble({ src, duration, mine }) {
 function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
-  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote,
+  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall,
 }) {
   const [tab, setTab] = useState("posts");
   const [openPostId, setOpenPostId] = useState(null);
@@ -2840,7 +2842,7 @@ function Messages({
           <button onClick={onCloseConversation} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
             <ChevronLeft size={20} color={C.ink} />
           </button>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>{title}</div>
             {otherMember && (
               <div style={{ fontSize: 10.5, color: isOnline(otherMember.last_seen_at) ? "#3FB27F" : C.inkSoft, fontWeight: 600, marginTop: -1 }}>
@@ -2848,6 +2850,17 @@ function Messages({
               </div>
             )}
           </div>
+          {otherMember && (
+            <button
+              onClick={() => onStartCall(activeConversation.id, otherMember.id, false)} className="dvbc-tap"
+              style={{
+                width: 38, height: 38, borderRadius: "50%", border: "none", cursor: "pointer",
+                background: C.lilacSoft, color: C.garnet, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}
+            >
+              <Phone size={17} />
+            </button>
+          )}
         </div>
 
         <div style={{ flex: 1, padding: "16px 24px 0", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3058,6 +3071,25 @@ function Messages({
           {!loadingConversations && conversations.length === 0 && (
             <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No chats yet — start one above.</div>
           )}
+
+          <button
+            onClick={() => onStartCall(null, null, true)} className="dvbc-tap"
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginBottom: 14,
+              background: C.lilacSoft, border: "none", borderRadius: 14, cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <div style={{
+              width: 36, height: 36, borderRadius: "50%", background: GRADIENT, color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <Video size={17} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>Start Rehearsal Call</div>
+              <div style={{ fontSize: 10.5, color: C.inkSoft }}>Join the group video room</div>
+            </div>
+          </button>
 
           {conversations.map((conv) => {
             const unread = unreadCountFor(conv);
@@ -4880,6 +4912,196 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+/* ---------- Voice/video calling (Agora) ---------- */
+function IncomingCallBanner({ call, onAccept, onDecline }) {
+  if (!call) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 300, background: "rgba(20,10,20,0.92)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28, padding: 24,
+    }}>
+      <div style={{ width: 96, height: 96, borderRadius: "50%", overflow: "hidden", background: C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {call.callerAvatar
+          ? <img src={call.callerAvatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : <User size={40} color={C.garnet} />}
+      </div>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontFamily: "Lora, serif", fontSize: 22, color: "#fff" }}>{call.callerName || "Someone"}</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>Incoming call…</div>
+      </div>
+      <div style={{ display: "flex", gap: 40, marginTop: 16 }}>
+        <button onClick={onDecline} className="dvbc-tap" style={{
+          width: 60, height: 60, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: C.roseDeep, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <PhoneOff size={24} />
+        </button>
+        <button onClick={onAccept} className="dvbc-tap" style={{
+          width: 60, height: 60, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: "#3fae5a", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <Phone size={24} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CallScreen({ call, profile, onLeave }) {
+  const clientRef = useRef(null);
+  const localTracksRef = useRef({ audio: null, video: null });
+  const [remoteUsers, setRemoteUsers] = useState([]);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [status, setStatus] = useState("connecting"); // connecting | live | error
+  const [errorMsg, setErrorMsg] = useState(null);
+  const localVideoRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    clientRef.current = client;
+
+    client.on("user-published", async (user, mediaType) => {
+      await client.subscribe(user, mediaType);
+      if (mediaType === "video") setRemoteUsers((prev) => prev.some((u) => u.uid === user.uid) ? prev.map((u) => u.uid === user.uid ? user : u) : [...prev, user]);
+      if (mediaType === "audio") user.audioTrack?.play();
+    });
+    client.on("user-unpublished", (user) => {
+      setRemoteUsers((prev) => prev.map((u) => u.uid === user.uid ? user : u));
+    });
+    client.on("user-left", (user) => {
+      setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid));
+    });
+
+    (async () => {
+      try {
+        const res = await fetch("/api/agora-token", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: call.channel_name, uid: 0 }),
+        });
+        if (!res.ok) throw new Error("Token request failed");
+        const { appId, token, uid } = await res.json();
+        if (cancelled) return;
+
+        await client.join(appId, call.channel_name, token, uid || null);
+        let audioTrack, videoTrack;
+        try {
+          [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        } catch (e) {
+          // Camera unavailable/denied — fall back to audio-only
+          audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+          videoTrack = null;
+          setCamOn(false);
+        }
+        if (cancelled) { audioTrack?.close(); videoTrack?.close(); return; }
+        localTracksRef.current = { audio: audioTrack, video: videoTrack };
+        if (videoTrack && localVideoRef.current) videoTrack.play(localVideoRef.current);
+        const toPublish = [audioTrack, videoTrack].filter(Boolean);
+        await client.publish(toPublish);
+        setStatus("live");
+      } catch (e) {
+        setErrorMsg("Couldn't connect to the call. Check your connection and try again.");
+        setStatus("error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      localTracksRef.current.audio?.close();
+      localTracksRef.current.video?.close();
+      client.removeAllListeners();
+      client.leave().catch(() => {});
+    };
+  }, [call.channel_name]);
+
+  useEffect(() => {
+    remoteUsers.forEach((u) => {
+      if (u.videoTrack) {
+        const el = document.getElementById(`dvbc-remote-${u.uid}`);
+        if (el) u.videoTrack.play(el);
+      }
+    });
+  }, [remoteUsers]);
+
+  const toggleMic = () => {
+    const t = localTracksRef.current.audio;
+    if (!t) return;
+    t.setEnabled(!micOn);
+    setMicOn(!micOn);
+    haptic(6);
+  };
+  const toggleCam = () => {
+    const t = localTracksRef.current.video;
+    if (!t) return;
+    t.setEnabled(!camOn);
+    setCamOn(!camOn);
+    haptic(6);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#1a0f16", display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        {status === "connecting" && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.8)", fontSize: 13.5 }}>
+            Connecting…
+          </div>
+        )}
+        {status === "error" && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13.5, padding: 24, textAlign: "center" }}>
+            {errorMsg}
+          </div>
+        )}
+        <div style={{
+          display: "grid", gap: 4, height: "100%",
+          gridTemplateColumns: remoteUsers.length > 1 ? "1fr 1fr" : "1fr",
+        }}>
+          {remoteUsers.length === 0 && status === "live" && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.6)", fontSize: 13.5 }}>
+              Waiting for others to join…
+            </div>
+          )}
+          {remoteUsers.map((u) => (
+            <div key={u.uid} id={`dvbc-remote-${u.uid}`} style={{ background: "#000", position: "relative", minHeight: 120 }} />
+          ))}
+        </div>
+        {camOn && (
+          <div ref={localVideoRef} style={{
+            position: "absolute", bottom: 100, right: 16, width: 96, height: 128, borderRadius: 12,
+            overflow: "hidden", background: "#000", border: "2px solid rgba(255,255,255,0.25)",
+          }} />
+        )}
+      </div>
+
+      <div style={{
+        display: "flex", justifyContent: "center", gap: 20, alignItems: "center",
+        padding: "18px 24px calc(env(safe-area-inset-bottom, 0px) + 18px)",
+      }}>
+        <button onClick={toggleMic} className="dvbc-tap" style={{
+          width: 52, height: 52, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: micOn ? "rgba(255,255,255,0.15)" : "#fff", color: micOn ? "#fff" : "#1a0f16",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {micOn ? <Mic size={20} /> : <MicOff size={20} />}
+        </button>
+        <button onClick={toggleCam} className="dvbc-tap" style={{
+          width: 52, height: 52, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: camOn ? "rgba(255,255,255,0.15)" : "#fff", color: camOn ? "#fff" : "#1a0f16",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {camOn ? <Video size={20} /> : <VideoOff size={20} />}
+        </button>
+        <button onClick={onLeave} className="dvbc-tap" style={{
+          width: 60, height: 60, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: C.roseDeep, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <PhoneOff size={24} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState("dashboard");
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
@@ -5209,6 +5431,76 @@ export default function App() {
 
     return () => supabase.removeChannel(channel);
   }, [session, profile, loadConversations]);
+
+  // Voice/video calling: incoming call ringing + active call state
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    const callChannel = supabase
+      .channel("call-invites")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "call_invites" }, (payload) => {
+        const row = payload.new;
+        if (row.callee_id === profile.id && row.status === "ringing") {
+          const caller = members.find((m) => m.id === row.caller_id);
+          setIncomingCall({ ...row, callerName: caller?.name, callerAvatar: caller?.avatar_url });
+          playChime();
+          haptic(20);
+        }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "call_invites" }, (payload) => {
+        const row = payload.new;
+        if (row.status === "declined" && activeCall?.inviteId === row.id) {
+          setToast({ title: "Call declined", body: "" });
+          setActiveCall(null);
+        }
+        if (row.status === "ended" && incomingCall?.id === row.id) {
+          setIncomingCall(null);
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(callChannel);
+  }, [profile, members, activeCall, incomingCall]);
+
+  const startCall = useCallback(async (conversationId, calleeId, isGroup) => {
+    if (!profile) return;
+    const channel_name = isGroup ? "dvbc-rehearsal" : `dvbc-conv-${conversationId}`;
+    const { data, error } = await supabase
+      .from("call_invites")
+      .insert({
+        conversation_id: conversationId || null,
+        channel_name,
+        caller_id: profile.id,
+        callee_id: isGroup ? null : calleeId,
+        is_group: !!isGroup,
+        status: isGroup ? "accepted" : "ringing",
+      })
+      .select()
+      .single();
+    if (error || !data) { setToast({ title: "Couldn't start call", body: "" }); return; }
+    setActiveCall({ inviteId: data.id, channel_name, is_group: !!isGroup });
+  }, [profile]);
+
+  const acceptIncomingCall = useCallback(async () => {
+    if (!incomingCall) return;
+    await supabase.from("call_invites").update({ status: "accepted", updated_at: new Date().toISOString() }).eq("id", incomingCall.id);
+    setActiveCall({ inviteId: incomingCall.id, channel_name: incomingCall.channel_name, is_group: false });
+    setIncomingCall(null);
+  }, [incomingCall]);
+
+  const declineIncomingCall = useCallback(async () => {
+    if (!incomingCall) return;
+    await supabase.from("call_invites").update({ status: "declined", updated_at: new Date().toISOString() }).eq("id", incomingCall.id);
+    setIncomingCall(null);
+  }, [incomingCall]);
+
+  const endActiveCall = useCallback(async () => {
+    if (activeCall?.inviteId) {
+      await supabase.from("call_invites").update({ status: "ended", updated_at: new Date().toISOString() }).eq("id", activeCall.inviteId);
+    }
+    setActiveCall(null);
+  }, [activeCall]);
 
   const createConversation = useCallback(async (memberIds, title, isGroup) => {
     if (!profile) return;
@@ -5567,7 +5859,8 @@ export default function App() {
       loadingConversations={loadingConversations} activeConversationId={activeConversationId}
       onOpenConversation={openConversation} onCloseConversation={closeConversation}
       onCreateConversation={createConversation} onSendChatMessage={sendChatMessage}
-      onMarkConversationRead={markConversationRead} onDeletePost={deletePost} onSendVoiceNote={sendVoiceNote} />
+      onMarkConversationRead={markConversationRead} onDeletePost={deletePost} onSendVoiceNote={sendVoiceNote}
+      onStartCall={startCall} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
   else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
@@ -5596,6 +5889,8 @@ export default function App() {
       {showBottomNav && <BottomNav screen={screen} onNav={setScreen} />}
       <OnboardingTour profile={profile} />
       <Toast toast={toast} onClose={() => setToast(null)} />
+      <IncomingCallBanner call={incomingCall} onAccept={acceptIncomingCall} onDecline={declineIncomingCall} />
+      {activeCall && <CallScreen call={activeCall} profile={profile} onLeave={endActiveCall} />}
     </div>
   );
                                                                                         }
