@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
-  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2 } from "lucide-react";
+  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2, Mic, Square } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
@@ -2490,10 +2490,68 @@ function PostSeenBy({ post, viewerId }) {
   );
 }
 
+/* ---------- Voice note playback bubble ---------- */
+function formatClockTime(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds || 0));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${String(rem).padStart(2, "0")}`;
+}
+function VoiceNoteBubble({ src, duration, mine }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..1
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => {
+      setCurrent(audio.currentTime);
+      if (audio.duration) setProgress(audio.currentTime / audio.duration);
+    };
+    const onEnd = () => { setPlaying(false); setProgress(0); setCurrent(0); };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnd);
+    return () => { audio.removeEventListener("timeupdate", onTime); audio.removeEventListener("ended", onEnd); };
+  }, []);
+
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) { audio.pause(); setPlaying(false); }
+    else { audio.play(); setPlaying(true); haptic(6); }
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 170 }}>
+      <audio ref={audioRef} src={src} preload="metadata" />
+      <button
+        onClick={toggle} className="dvbc-tap"
+        style={{
+          width: 32, height: 32, borderRadius: "50%", flexShrink: 0, border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: mine ? "rgba(255,255,255,0.25)" : C.lilac, color: mine ? "#fff" : C.garnetDark,
+        }}
+      >
+        {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" style={{ marginLeft: 1 }} />}
+      </button>
+      <div style={{ flex: 1 }}>
+        <div style={{ height: 3, borderRadius: 2, background: mine ? "rgba(255,255,255,0.3)" : C.lilacLine, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${Math.round(progress * 100)}%`, background: mine ? "#fff" : C.garnet, transition: "width 0.1s linear" }} />
+        </div>
+        <div style={{ fontSize: 10, marginTop: 4, color: mine ? "rgba(255,255,255,0.85)" : C.inkSoft }}>
+          {formatClockTime(playing || current > 0 ? current : duration)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
-  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost,
+  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote,
 }) {
   const [tab, setTab] = useState("posts");
   const [openPostId, setOpenPostId] = useState(null);
@@ -2513,6 +2571,73 @@ function Messages({
 
   const chatChannelRef = useRef(null);
   const typingStopTimer = useRef(null);
+
+  // Voice note recording state
+  const [recState, setRecState] = useState("idle"); // idle | recording | preview | sending
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [recBlob, setRecBlob] = useState(null);
+  const [recError, setRecError] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const recChunksRef = useRef([]);
+  const recStreamRef = useRef(null);
+  const recTimerRef = useRef(null);
+
+  const stopRecTimer = () => { clearInterval(recTimerRef.current); recTimerRef.current = null; };
+  const stopRecStream = () => { recStreamRef.current?.getTracks().forEach((t) => t.stop()); recStreamRef.current = null; };
+
+  const startRecording = async () => {
+    setRecError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recStreamRef.current = stream;
+      const mr = new MediaRecorder(stream);
+      recChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) recChunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(recChunksRef.current, { type: mr.mimeType || "audio/webm" });
+        setRecBlob(blob);
+        setRecState("preview");
+        stopRecStream();
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setRecSeconds(0);
+      setRecState("recording");
+      haptic(10);
+      recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
+    } catch (e) {
+      setRecError("Microphone access denied or unavailable.");
+    }
+  };
+
+  const stopRecording = () => {
+    stopRecTimer();
+    mediaRecorderRef.current?.stop();
+  };
+
+  const discardRecording = () => {
+    stopRecTimer();
+    stopRecStream();
+    mediaRecorderRef.current = null;
+    recChunksRef.current = [];
+    setRecBlob(null);
+    setRecSeconds(0);
+    setRecState("idle");
+  };
+
+  const sendRecording = async () => {
+    if (!recBlob || !activeConversationId || recState === "sending") return;
+    setRecState("sending");
+    try {
+      await onSendVoiceNote(activeConversationId, recBlob, recSeconds);
+    } finally {
+      setRecBlob(null);
+      setRecSeconds(0);
+      setRecState("idle");
+    }
+  };
+
+  useEffect(() => () => { stopRecTimer(); stopRecStream(); }, []);
 
   const openPost = (post) => {
     setOpenPostId(post.id);
@@ -2735,10 +2860,13 @@ function Messages({
                   <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 2, marginLeft: 4 }}>{m.sender?.name}</div>
                 )}
                 <div style={{
-                  maxWidth: "78%", padding: "10px 14px", borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                  maxWidth: "78%", padding: m.message_type === "voice_note" ? "10px 12px" : "10px 14px",
+                  borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
                   background: mine ? GRADIENT : C.lilacSoft, color: mine ? "#fff" : C.ink, fontSize: 13.5, lineHeight: 1.5,
                 }}>
-                  {m.content}
+                  {m.message_type === "voice_note"
+                    ? <VoiceNoteBubble src={m.audio_url} duration={m.duration_seconds} mine={mine} />
+                    : m.content}
                 </div>
                 <div style={{ fontSize: 9.5, color: C.inkSoft, marginTop: 3, marginLeft: mine ? 0 : 4, marginRight: mine ? 4 : 0 }}>{timeAgo(m.created_at)}</div>
               </div>
@@ -2765,22 +2893,79 @@ function Messages({
 
         <div style={{
           position: "sticky", bottom: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
-          padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
+          padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)",
         }}>
-          <input
-            value={chatDraft} onChange={(e) => handleChatInputChange(e.target.value)} placeholder="Message…"
-            style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
-            onKeyDown={(e) => { if (e.key === "Enter") submitChatMessage(); }}
-          />
-          <button
-            onClick={submitChatMessage} disabled={!chatDraft.trim() || sendingChat} className="dvbc-tap"
-            style={{
-              background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
-              border: "none", cursor: chatDraft.trim() ? "pointer" : "default", opacity: chatDraft.trim() ? 1 : 0.5, flexShrink: 0,
-            }}
-          >
-            Send
-          </button>
+          {recError && (
+            <div style={{ fontSize: 11.5, color: C.roseDeep, marginBottom: 8 }}>{recError}</div>
+          )}
+
+          {recState === "recording" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.roseDeep, flexShrink: 0, animation: "dvbcPulse 1s ease-in-out infinite" }} />
+              <div style={{ flex: 1, fontSize: 13.5, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{formatClockTime(recSeconds)} recording…</div>
+              <button onClick={discardRecording} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 6 }}>
+                <X size={18} color={C.inkSoft} />
+              </button>
+              <button
+                onClick={stopRecording} className="dvbc-tap"
+                style={{ width: 40, height: 40, borderRadius: "50%", border: "none", cursor: "pointer", background: C.roseDeep, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+              >
+                <Square size={16} fill="currentColor" />
+              </button>
+            </div>
+          )}
+
+          {recState === "preview" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <VoiceNoteBubble src={recBlob ? URL.createObjectURL(recBlob) : null} duration={recSeconds} mine={false} />
+              </div>
+              <button onClick={discardRecording} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 6 }}>
+                <Trash2 size={17} color={C.roseDeep} />
+              </button>
+              <button
+                onClick={sendRecording} disabled={recState === "sending"} className="dvbc-tap"
+                style={{
+                  background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "10px 16px", borderRadius: 999,
+                  border: "none", cursor: "pointer", flexShrink: 0,
+                }}
+              >
+                Send
+              </button>
+            </div>
+          )}
+
+          {(recState === "idle" || recState === "sending") && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                value={chatDraft} onChange={(e) => handleChatInputChange(e.target.value)} placeholder="Message…"
+                disabled={recState === "sending"}
+                style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
+                onKeyDown={(e) => { if (e.key === "Enter") submitChatMessage(); }}
+              />
+              {chatDraft.trim() ? (
+                <button
+                  onClick={submitChatMessage} disabled={sendingChat} className="dvbc-tap"
+                  style={{
+                    background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
+                    border: "none", cursor: "pointer", flexShrink: 0,
+                  }}
+                >
+                  Send
+                </button>
+              ) : (
+                <button
+                  onClick={startRecording} disabled={recState === "sending"} className="dvbc-tap"
+                  style={{
+                    width: 40, height: 40, borderRadius: "50%", border: "none", cursor: "pointer",
+                    background: C.lilacSoft, color: C.garnet, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                  }}
+                >
+                  <Mic size={17} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -5064,7 +5249,29 @@ export default function App() {
       .eq("member_id", profile.id);
   }, [profile]);
 
-  const markConversationRead = useCallback(async (conversationId) => {
+  const sendVoiceNote = useCallback(async (conversationId, blob, durationSeconds) => {
+    if (!profile) return;
+    const ext = blob.type.includes("mp4") ? "m4a" : "webm";
+    const path = `${conversationId}/${profile.id}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("voice-notes").upload(path, blob, {
+      contentType: blob.type || "audio/webm",
+    });
+    if (uploadError) return;
+    const { data: pub } = supabase.storage.from("voice-notes").getPublicUrl(path);
+    await supabase.from("chat_messages").insert({
+      conversation_id: conversationId,
+      sender_id: profile.id,
+      content: "",
+      message_type: "voice_note",
+      audio_url: pub?.publicUrl,
+      duration_seconds: Math.round(durationSeconds || 0),
+    });
+    await supabase
+      .from("conversation_participants")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("conversation_id", conversationId)
+      .eq("member_id", profile.id);
+  }, [profile]);
     if (!profile) return;
     await supabase
       .from("conversation_participants")
@@ -5283,6 +5490,7 @@ export default function App() {
     @keyframes dvbcShimmer { 100% { transform: translateX(100%); } }
     .dvbc-spin { animation: dvbcSpin 0.8s linear infinite; }
     @keyframes dvbcSpin { to { transform: rotate(360deg); } }
+    @keyframes dvbcPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
     @keyframes dvbcConfetti {
       0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
       100% { opacity: 0; transform: translate(var(--dx), 240px) rotate(540deg); }
@@ -5357,7 +5565,7 @@ export default function App() {
       loadingConversations={loadingConversations} activeConversationId={activeConversationId}
       onOpenConversation={openConversation} onCloseConversation={closeConversation}
       onCreateConversation={createConversation} onSendChatMessage={sendChatMessage}
-      onMarkConversationRead={markConversationRead} onDeletePost={deletePost} />
+      onMarkConversationRead={markConversationRead} onDeletePost={deletePost} onSendVoiceNote={sendVoiceNote} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
   else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
