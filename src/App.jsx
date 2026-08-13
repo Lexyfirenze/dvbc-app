@@ -2491,7 +2491,7 @@ function PostSeenBy({ post, viewerId }) {
 }
 
 /* ---------- Voice note playback bubble ---------- */
-function formatClockTime(totalSeconds) {
+function formatDuration(totalSeconds) {
   const s = Math.max(0, Math.round(totalSeconds || 0));
   const m = Math.floor(s / 60);
   const rem = s % 60;
@@ -2541,7 +2541,7 @@ function VoiceNoteBubble({ src, duration, mine }) {
           <div style={{ height: "100%", width: `${Math.round(progress * 100)}%`, background: mine ? "#fff" : C.garnet, transition: "width 0.1s linear" }} />
         </div>
         <div style={{ fontSize: 10, marginTop: 4, color: mine ? "rgba(255,255,255,0.85)" : C.inkSoft }}>
-          {formatClockTime(playing || current > 0 ? current : duration)}
+          {formatDuration(playing || current > 0 ? current : duration)}
         </div>
       </div>
     </div>
@@ -2902,7 +2902,7 @@ function Messages({
           {recState === "recording" && (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.roseDeep, flexShrink: 0, animation: "dvbcPulse 1s ease-in-out infinite" }} />
-              <div style={{ flex: 1, fontSize: 13.5, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{formatClockTime(recSeconds)} recording…</div>
+              <div style={{ flex: 1, fontSize: 13.5, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{formatDuration(recSeconds)} recording…</div>
               <button onClick={discardRecording} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 6 }}>
                 <X size={18} color={C.inkSoft} />
               </button>
