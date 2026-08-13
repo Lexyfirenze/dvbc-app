@@ -2866,7 +2866,7 @@ function Messages({
         <div style={{ flex: 1, padding: "16px 24px 0", display: "flex", flexDirection: "column", gap: 10 }}>
           {msgs.length === 0 && <div style={{ textAlign: "center", color: C.inkSoft, fontSize: 12.5, padding: "20px 0" }}>Say hello 👋</div>}
           {msgs.map((m) => {
-            const mine = m.sender_id === profile?.id;
+            const mine = m.sender?.id === profile?.id;
             return (
               <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
                 {!mine && activeConversation.is_group && (
