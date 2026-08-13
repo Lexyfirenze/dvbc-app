@@ -3953,6 +3953,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
           </div>
         )}
         {[
+          { label: "Executives", nav: "executives" },
           { label: "Privacy", nav: "privacy" },
           { label: "About De Voci Belli Chorale", nav: "about" },
         ].map(({ label, nav }) => (
@@ -4889,7 +4890,7 @@ function BottomNav({ screen, onNav }) {
     { key: "dashboard", label: "Home", icon: Home },
     { key: "attendance", label: "Attendance", icon: CheckSquare },
     { key: "practice", label: "Practice", icon: ListMusic },
-    { key: "executives", label: "Execs", icon: Users },
+    { key: "messages", label: "Messages", icon: MessageCircle },
     { key: "library", label: "Library", icon: Music2 },
     { key: "profile", label: "Profile", icon: User },
   ];
