@@ -5182,7 +5182,28 @@ function CallScreen({ call, profile, onLeave }) {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState("dashboard");
+  const [screen, setScreenRaw] = useState("dashboard");
+
+  // Keep browser/Android history in sync with in-app screen state so the
+  // hardware/gesture back button navigates screens instead of exiting the PWA.
+  const setScreen = (newScreen) => {
+    setScreenRaw(newScreen);
+    window.history.pushState({ screen: newScreen }, "", "");
+  };
+
+  useEffect(() => {
+    // Establish an initial history entry for the starting screen so the very
+    // first back-press has something to land on rather than leaving the app.
+    window.history.replaceState({ screen: "dashboard" }, "", "");
+
+    const onPopState = (event) => {
+      const target = event.state?.screen || "dashboard";
+      setScreenRaw(target);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
   const [profile, setProfile] = useState(null);
   const [darkMode, setDarkMode] = useState(() => store.get("dvbc-dark-mode", false));
