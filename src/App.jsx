@@ -973,6 +973,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
   const [refreshTick, setRefreshTick] = useState(0);
   const [pullY, setPullY] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const announcementsRef = useRef(null);
   const touchStartY = useRef(null);
   const scrollRef = useRef(null);
   const PULL_THRESHOLD = 64;
@@ -1082,7 +1083,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button
-            onClick={() => onNav("messages")} className="dvbc-tap"
+            onClick={() => announcementsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} className="dvbc-tap"
             style={{ position: "relative", width: 38, height: 38, borderRadius: "50%", background: C.lilacSoft, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
           >
             <Bell size={16} color={C.plum} />
@@ -1181,7 +1182,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
           </div>
         </a>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
+        <div ref={announcementsRef} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
           <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Announcements</div>
           {isAdmin && (
             <button
@@ -5900,7 +5901,7 @@ export default function App() {
   let content;
   if (screen === "dashboard") content = (
     <Dashboard profile={profile} members={members} events={events} posts={posts} pieces={libraryPieces} isAdmin={isAdmin} onSubmitPost={submitPost} onNav={setScreen}
-      unreadCount={unreadPostCount + unreadChatCount} onCheckIn={checkInToEvent}
+      unreadCount={unreadPostCount} onCheckIn={checkInToEvent}
       checkingIn={checkingIn} checkInError={checkInError} />
   );
   else if (screen === "attendance") content = (
