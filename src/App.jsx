@@ -2613,7 +2613,7 @@ function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
   onCreateConversation, onActivateSectionChat, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall, onEditChatMessage, onDeleteChatMessage,
-  openMemberPosting, onToggleOpenPosting,
+  openMemberPosting, onToggleOpenPosting, restrictCommenting,
 }) {
   const [tab, setTab] = useState("overview");
   const [openPostId, setOpenPostId] = useState(null);
@@ -2867,25 +2867,34 @@ function Messages({
           ))}
         </div>
 
-        <div style={{
-          position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
-          padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
-        }}>
-          <input
-            value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Write a comment…"
-            style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
-            onKeyDown={(e) => { if (e.key === "Enter") submitNewComment(); }}
-          />
-          <button
-            onClick={submitNewComment} disabled={!commentDraft.trim() || posting} className="dvbc-tap"
-            style={{
-              background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
-              border: "none", cursor: commentDraft.trim() ? "pointer" : "default", opacity: commentDraft.trim() ? 1 : 0.5, flexShrink: 0,
-            }}
-          >
-            Send
-          </button>
-        </div>
+        {(isAdmin || !restrictCommenting) ? (
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
+            padding: "12px 24px calc(env(safe-area-inset-bottom, 0px) + 12px)", display: "flex", gap: 8, alignItems: "center",
+          }}>
+            <input
+              value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Write a comment…"
+              style={{ flex: 1, border: `1.4px solid ${C.lilacLine}`, background: C.parchment, borderRadius: 999, padding: "11px 16px", fontSize: 13, outline: "none", color: C.ink }}
+              onKeyDown={(e) => { if (e.key === "Enter") submitNewComment(); }}
+            />
+            <button
+              onClick={submitNewComment} disabled={!commentDraft.trim() || posting} className="dvbc-tap"
+              style={{
+                background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
+                border: "none", cursor: commentDraft.trim() ? "pointer" : "default", opacity: commentDraft.trim() ? 1 : 0.5, flexShrink: 0,
+              }}
+            >
+              Send
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${C.lilacLine}`,
+            padding: "14px 24px calc(env(safe-area-inset-bottom, 0px) + 14px)", fontSize: 12, color: C.inkSoft, textAlign: "center",
+          }}>
+            Only admins can comment on posts right now.
+          </div>
+        )}
       </div>
     );
   }
@@ -3225,30 +3234,6 @@ function Messages({
             {openMemberPosting ? "Member posts" : "Leadership posts"}
           </div>
 
-          {isAdmin && (
-            <button
-              onClick={onToggleOpenPosting} className="dvbc-tap"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
-                background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 12, padding: "10px 12px",
-                marginBottom: 14, cursor: "pointer", textAlign: "left",
-              }}
-            >
-              <span style={{ fontSize: 12, color: C.ink, fontWeight: 600 }}>
-                Members can post{openMemberPosting ? "" : " (currently admin-only)"}
-              </span>
-              <span style={{
-                width: 34, height: 20, borderRadius: 999, position: "relative", flexShrink: 0,
-                background: openMemberPosting ? gradient() : C.lilacLine, transition: "background 0.15s",
-              }}>
-                <span style={{
-                  position: "absolute", top: 2, left: openMemberPosting ? 16 : 2, width: 16, height: 16,
-                  borderRadius: "50%", background: "#fff", transition: "left 0.15s",
-                }} />
-              </span>
-            </button>
-          )}
-
           {loading && <BrandSpinner />}
           {!loading && posts.length === 0 && (
             <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No posts yet.</div>
@@ -3336,43 +3321,6 @@ function Messages({
               <div style={{ fontSize: 10.5, color: C.inkSoft }}>Join the group video room</div>
             </div>
           </button>
-
-          {isAdmin && (
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, color: C.ink, marginBottom: 8 }}>Section chats</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {["Soprano", "Alto", "Tenor", "Bass", "Conductor"].map((section) => {
-                  const existing = conversations.find((c) => c.section === section);
-                  const busy = activatingSection === section;
-                  return existing ? (
-                    <button
-                      key={section} onClick={() => { setTab("chats"); onOpenConversation(existing.id); }} className="dvbc-tap"
-                      style={{
-                        display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999,
-                        background: C.sageBg, border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: 600, color: C.sage,
-                      }}
-                    >
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.sage }} />
-                      {section === "Conductor" ? "Conductors" : `${section}s`} active
-                    </button>
-                  ) : (
-                    <button
-                      key={section}
-                      disabled={busy}
-                      onClick={async () => { setActivatingSection(section); haptic(8); await onActivateSectionChat(section); setActivatingSection(null); }}
-                      className="dvbc-tap"
-                      style={{
-                        padding: "8px 13px", borderRadius: 999, background: C.lilacSoft, border: `1px solid ${C.lilacLine}`,
-                        cursor: busy ? "default" : "pointer", fontSize: 11.5, fontWeight: 600, color: C.ink, opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      {busy ? "Activating…" : `Activate ${section === "Conductor" ? "Conductors" : section + "s"}`}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {conversations.map((conv) => {
             const unread = unreadCountFor(conv);
@@ -4180,6 +4128,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
         )}
         {[
           { label: "Executives", nav: "executives" },
+          ...(isAdmin ? [{ label: "Communication Settings", nav: "communication" }] : []),
           { label: "Privacy", nav: "privacy" },
           { label: "About De Voci Belli Chorale", nav: "about" },
         ].map(({ label, nav }) => (
@@ -4313,6 +4262,162 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
     </div>
   );
 }
+
+function ToggleRow({ label, hint, on, onClick }) {
+  return (
+    <div
+      onClick={() => { haptic(8); onClick?.(); }} className="dvbc-tap"
+      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer" }}
+    >
+      <div style={{ paddingRight: 12 }}>
+        <div style={{ fontSize: 13.5, color: C.ink, fontWeight: 600 }}>{label}</div>
+        {hint && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2, lineHeight: 1.4 }}>{hint}</div>}
+      </div>
+      <div style={{
+        width: 42, height: 24, borderRadius: 999, background: on ? gradient() : C.lilacLine,
+        position: "relative", transition: "background 0.2s ease", flexShrink: 0,
+      }}>
+        <div style={{
+          position: "absolute", top: 2, left: on ? 20 : 2, width: 20, height: 20, borderRadius: "50%",
+          background: "#fff", transition: "left 0.2s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+        }} />
+      </div>
+    </div>
+  );
+}
+
+const VOICE_SECTIONS = ["Soprano", "Alto", "Tenor", "Bass", "Conductor"];
+
+function CommunicationSettings({
+  onBack, openMemberPosting, onToggleOpenPosting, restrictCommenting, onToggleRestrictCommenting,
+  members, conversations, onActivateSectionChat, onOpenConversation, onCreateConversation, onGoToMessages,
+}) {
+  const [activatingSection, setActivatingSection] = useState(null);
+  const [groupSections, setGroupSections] = useState([]);
+  const [groupTitle, setGroupTitle] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+
+  const toggleGroupSection = (section) => {
+    haptic(6);
+    setGroupSections((prev) => (prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]));
+  };
+
+  const createMixedGroup = async () => {
+    if (groupSections.length === 0 || !groupTitle.trim() || creatingGroup) return;
+    setCreatingGroup(true);
+    const memberIds = members.filter((m) => groupSections.includes(m.part) && m.approved).map((m) => m.id);
+    await onCreateConversation(memberIds, groupTitle.trim(), true);
+    setGroupSections([]);
+    setGroupTitle("");
+    setCreatingGroup(false);
+    onGoToMessages?.();
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.parchment, paddingBottom: 40 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(env(safe-area-inset-top, 0px) + 16px) 24px 14px" }}>
+        <button onClick={onBack} className="dvbc-tap" style={{ background: "none", border: "none", padding: 4, cursor: "pointer" }}>
+          <ChevronLeft size={22} color={C.ink} />
+        </button>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 19, color: C.ink }}>Communication Settings</div>
+      </div>
+
+      <div style={{ padding: "0 24px" }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, margin: "10px 0 4px" }}>Posting & comments</div>
+        <ToggleRow
+          label="Members can create posts"
+          hint={openMemberPosting ? "Any approved member can post to Member posts" : "Currently admin-only — toggle on to open it up"}
+          on={openMemberPosting}
+          onClick={onToggleOpenPosting}
+        />
+        <ToggleRow
+          label="Restrict commenting to admins"
+          hint={restrictCommenting ? "Only admins can comment on posts" : "Any approved member can comment"}
+          on={restrictCommenting}
+          onClick={onToggleRestrictCommenting}
+        />
+
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, margin: "24px 0 8px" }}>Section chats</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22 }}>
+          {VOICE_SECTIONS.map((section) => {
+            const existing = conversations.find((c) => c.section === section);
+            const busy = activatingSection === section;
+            return existing ? (
+              <button
+                key={section}
+                onClick={() => { onOpenConversation(existing.id); onGoToMessages?.(); }}
+                className="dvbc-tap"
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999,
+                  background: C.sageBg, border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: 600, color: C.sage,
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.sage }} />
+                {section === "Conductor" ? "Conductors" : `${section}s`} active
+              </button>
+            ) : (
+              <button
+                key={section}
+                disabled={busy}
+                onClick={async () => { setActivatingSection(section); haptic(8); await onActivateSectionChat(section); setActivatingSection(null); }}
+                className="dvbc-tap"
+                style={{
+                  padding: "8px 13px", borderRadius: 999, background: C.lilacSoft, border: `1px solid ${C.lilacLine}`,
+                  cursor: busy ? "default" : "pointer", fontSize: 11.5, fontWeight: 600, color: C.ink, opacity: busy ? 0.6 : 1,
+                }}
+              >
+                {busy ? "Activating…" : `Activate ${section === "Conductor" ? "Conductors" : section + "s"}`}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, margin: "4px 0 4px" }}>Custom group chat</div>
+        <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 10, lineHeight: 1.4 }}>
+          Pick any combination of sections to start a one-off group chat with everyone in them.
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {VOICE_SECTIONS.map((section) => {
+            const picked = groupSections.includes(section);
+            return (
+              <button
+                key={section} onClick={() => toggleGroupSection(section)} className="dvbc-tap"
+                style={{
+                  padding: "7px 13px", borderRadius: 999, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+                  background: picked ? gradient() : C.lilacSoft, color: picked ? "#fff" : C.ink,
+                  border: `1px solid ${picked ? "transparent" : C.lilacLine}`,
+                }}
+              >
+                {section}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          value={groupTitle} onChange={(e) => setGroupTitle(e.target.value)} placeholder="Group name"
+          style={{
+            width: "100%", border: `1.4px solid ${C.lilacLine}`, borderRadius: 10, padding: "10px 12px",
+            fontSize: 13, marginBottom: 10, boxSizing: "border-box", outline: "none", color: C.ink, fontFamily: "inherit",
+          }}
+        />
+        <button
+          onClick={createMixedGroup}
+          disabled={groupSections.length === 0 || !groupTitle.trim() || creatingGroup}
+          className="dvbc-tap"
+          style={{
+            width: "100%", background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12,
+            borderRadius: 12, border: "none",
+            cursor: groupSections.length && groupTitle.trim() ? "pointer" : "default",
+            opacity: groupSections.length && groupTitle.trim() ? 1 : 0.6,
+          }}
+        >
+          {creatingGroup ? "Creating…" : "Create group chat"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SheetMusicViewer({ path, title, onClose }) {
   const [signedUrl, setSignedUrl] = useState(null);
   const [isOfflineCopy, setIsOfflineCopy] = useState(false);
@@ -5532,6 +5637,7 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [openMemberPosting, setOpenMemberPosting] = useState(false);
+  const [restrictCommenting, setRestrictCommenting] = useState(false);
   const [postSeenAt, setPostSeenAt] = useState(() => store.get("dvbc-post-seen", {}));
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -5658,13 +5764,18 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    supabase.from("app_settings").select("value").eq("key", "open_member_posting").maybeSingle()
-      .then(({ data }) => setOpenMemberPosting(!!data?.value));
+    supabase.from("app_settings").select("key,value").then(({ data }) => {
+      (data || []).forEach((row) => {
+        if (row.key === "open_member_posting") setOpenMemberPosting(!!row.value);
+        if (row.key === "restrict_commenting") setRestrictCommenting(!!row.value);
+      });
+    });
 
     const settingsChannel = supabase
       .channel("app-settings-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload) => {
         if (payload.new?.key === "open_member_posting") setOpenMemberPosting(!!payload.new.value);
+        if (payload.new?.key === "restrict_commenting") setRestrictCommenting(!!payload.new.value);
       })
       .subscribe();
 
@@ -5676,6 +5787,12 @@ export default function App() {
     setOpenMemberPosting(next);
     await supabase.from("app_settings").update({ value: next, updated_at: new Date().toISOString() }).eq("key", "open_member_posting");
   }, [openMemberPosting]);
+
+  const toggleRestrictCommenting = useCallback(async () => {
+    const next = !restrictCommenting;
+    setRestrictCommenting(next);
+    await supabase.from("app_settings").update({ value: next, updated_at: new Date().toISOString() }).eq("key", "restrict_commenting");
+  }, [restrictCommenting]);
 
   useEffect(() => {
     if (!session) return;
@@ -6238,7 +6355,7 @@ export default function App() {
   );
   else if (screen === "messages") content = (
     <Messages posts={posts} loading={loadingPosts} isAdmin={isAdmin} profile={profile}
-      openMemberPosting={openMemberPosting} onToggleOpenPosting={toggleOpenMemberPosting}
+      openMemberPosting={openMemberPosting} onToggleOpenPosting={toggleOpenMemberPosting} restrictCommenting={restrictCommenting}
       onBack={() => setScreen("dashboard")} onSubmitPost={submitPost} onSubmitComment={submitComment}
       seenMap={postSeenAt} onMarkSeen={markPostSeen} members={members} conversations={conversations}
       loadingConversations={loadingConversations} activeConversationId={activeConversationId}
@@ -6248,6 +6365,16 @@ export default function App() {
       onStartCall={startCall} onEditChatMessage={editChatMessage} onDeleteChatMessage={deleteChatMessage} />
   );
   else if (screen === "executives") content = <Executives isAdmin={isAdmin} />;
+  else if (screen === "communication") content = (
+    <CommunicationSettings
+      onBack={() => setScreen("profile")}
+      openMemberPosting={openMemberPosting} onToggleOpenPosting={toggleOpenMemberPosting}
+      restrictCommenting={restrictCommenting} onToggleRestrictCommenting={toggleRestrictCommenting}
+      members={members} conversations={conversations}
+      onActivateSectionChat={activateSectionChat} onOpenConversation={openConversation}
+      onCreateConversation={createConversation} onGoToMessages={() => setScreen("messages")}
+    />
+  );
   else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
   else if (screen === "privacy") content = <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "about") content = <StaticPage title="About Us" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />;
