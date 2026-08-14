@@ -4708,6 +4708,130 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
 
   useEffect(() => { loadAssignments(); }, [loadAssignments]);
 
+  /* ---------- Solfège ---------- */
+  const solfegeCtxRef = useRef(null);
+  const [patterns, setPatterns] = useState([]);
+  const [loadingPatterns, setLoadingPatterns] = useState(true);
+  const [showPatternForm, setShowPatternForm] = useState(false);
+  const [editingPattern, setEditingPattern] = useState(null);
+  const emptyPatternForm = { title: "", startMidi: 60, syllablesText: "Do Re Mi Fa Sol La Ti Do'", notes: "" };
+  const [patternForm, setPatternForm] = useState(emptyPatternForm);
+  const [savingPattern, setSavingPattern] = useState(false);
+  const [patternError, setPatternError] = useState("");
+  const [playingPatternId, setPlayingPatternId] = useState(null);
+
+  const START_NOTES = [
+    { label: "C4 (Middle C)", midi: 60 }, { label: "D4", midi: 62 }, { label: "E4", midi: 64 },
+    { label: "F4", midi: 65 }, { label: "G4", midi: 67 }, { label: "A4", midi: 69 },
+    { label: "Bb3", midi: 58 }, { label: "C3", midi: 48 },
+  ];
+  const SOLFEGE_SEMITONES = {
+    do: 0, di: 1, re: 2, ri: 3, me: 3, mi: 4, fa: 5, fi: 6, sol: 7, so: 7, si: 8,
+    la: 9, li: 10, te: 10, ti: 11, "do'": 12, do8: 12, "do+": 12, do2: 12,
+  };
+  const parseSolfege = (text) => (text || "").trim().split(/\s+/).filter(Boolean).map((tok) => {
+    const key = tok.toLowerCase().replace(/[,.]/g, "");
+    return { label: tok, semitone: SOLFEGE_SEMITONES[key] };
+  });
+
+  const getSolfegeCtx = () => {
+    if (!solfegeCtxRef.current) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      solfegeCtxRef.current = new AC();
+    }
+    if (solfegeCtxRef.current.state === "suspended") solfegeCtxRef.current.resume();
+    return solfegeCtxRef.current;
+  };
+
+  const playSolfegeTone = (startMidi, semitone, duration = 0.55) => {
+    if (semitone === undefined) return;
+    const ctx = getSolfegeCtx();
+    const freq = 440 * Math.pow(2, (startMidi + semitone - 69) / 12);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.28, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration + 0.05);
+  };
+
+  const playSolfegePattern = (pattern) => {
+    haptic(10);
+    setPlayingPatternId(pattern.id);
+    const notes = parseSolfege((pattern.syllables || []).join(" "));
+    notes.forEach((n, i) => {
+      setTimeout(() => playSolfegeTone(pattern.start_midi, n.semitone), i * 600);
+    });
+    setTimeout(() => setPlayingPatternId(null), notes.length * 600);
+  };
+
+  const loadPatterns = useCallback(async () => {
+    setLoadingPatterns(true);
+    const { data } = await supabase.from("solfege_patterns").select("*").order("created_at", { ascending: false });
+    setPatterns(data || []);
+    setLoadingPatterns(false);
+  }, []);
+
+  useEffect(() => { loadPatterns(); }, [loadPatterns]);
+
+  const resetPatternForm = () => {
+    setPatternForm(emptyPatternForm);
+    setEditingPattern(null);
+    setShowPatternForm(false);
+    setPatternError("");
+  };
+
+  const startEditPattern = (p) => {
+    setEditingPattern(p);
+    setPatternForm({ title: p.title || "", startMidi: p.start_midi || 60, syllablesText: (p.syllables || []).join(" "), notes: p.notes || "" });
+    setShowPatternForm(true);
+  };
+
+  const savePattern = async () => {
+    if (!patternForm.title.trim()) { setPatternError("Title is required."); return; }
+    const parsed = parseSolfege(patternForm.syllablesText);
+    if (parsed.length === 0) { setPatternError("Enter at least one syllable, e.g. Do Re Mi."); return; }
+    const bad = parsed.filter((n) => n.semitone === undefined);
+    if (bad.length > 0) {
+      setPatternError(`Didn't recognize: ${bad.map((n) => n.label).join(", ")}. Use Do Re Mi Fa Sol La Ti, and Do' for the octave up.`);
+      return;
+    }
+    setSavingPattern(true);
+    setPatternError("");
+    try {
+      const payload = {
+        title: patternForm.title.trim(),
+        start_midi: patternForm.startMidi,
+        syllables: parsed.map((n) => n.label),
+        notes: patternForm.notes.trim() || null,
+      };
+      if (editingPattern) {
+        const { error } = await supabase.from("solfege_patterns").update(payload).eq("id", editingPattern.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("solfege_patterns").insert({ ...payload, created_by: profile.id });
+        if (error) throw error;
+      }
+      resetPatternForm();
+      loadPatterns();
+    } catch (err) {
+      setPatternError(err.message || "Could not save. Please try again.");
+    } finally {
+      setSavingPattern(false);
+    }
+  };
+
+  const deletePattern = async (p) => {
+    if (!window.confirm(`Delete "${p.title}"?`)) return;
+    await supabase.from("solfege_patterns").delete().eq("id", p.id);
+    if (editingPattern?.id === p.id) resetPatternForm();
+    loadPatterns();
+  };
+
   const loadLists = useCallback(async () => {
     setLoading(true);
     const [listsRes, tracksRes] = await Promise.all([
@@ -5362,7 +5486,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
       <TopHeader title="Practice Lists" subtitle="Personal & group playlists" />
 
       <div style={{ padding: "16px 24px 0", display: "flex", gap: 8 }}>
-        {[["lists", "Lists"], ["assignments", "Assignments"]].map(([key, label]) => (
+        {[["lists", "Lists"], ["assignments", "Assignments"], ["solfege", "Solfège"]].map(([key, label]) => (
           <button
             key={key} onClick={() => setView(key)} className="dvbc-tap"
             style={{
@@ -5680,6 +5804,118 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
                   {isAdmin && (
                     <button onClick={() => startEditAssignment(a)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0, flexShrink: 0 }}>Edit</button>
                   )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "solfege" && (
+        <div style={{ padding: "18px 24px 0" }}>
+          {isAdmin && (
+            <button
+              onClick={() => { resetPatternForm(); setShowPatternForm(true); }}
+              className="dvbc-tap"
+              style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
+            >
+              + New Pattern
+            </button>
+          )}
+
+          {showPatternForm && (
+            <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+                {editingPattern ? "Edit Pattern" : "New Solfège Pattern"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input style={inputStyle} placeholder="Pattern title" value={patternForm.title} onChange={(e) => setPatternForm({ ...patternForm, title: e.target.value })} />
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Starting note</label>
+                  <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                    <select
+                      value={patternForm.startMidi}
+                      onChange={(e) => setPatternForm({ ...patternForm, startMidi: Number(e.target.value) })}
+                      style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                    >
+                      {START_NOTES.map((n) => <option key={n.midi} value={n.midi}>{n.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Syllables</label>
+                  <input
+                    style={inputStyle} placeholder="Do Re Mi Fa Sol La Ti Do'"
+                    value={patternForm.syllablesText}
+                    onChange={(e) => setPatternForm({ ...patternForm, syllablesText: e.target.value })}
+                  />
+                  <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 4 }}>Space-separated: Do Re Mi Fa Sol La Ti — use Do' for the octave up.</div>
+                </div>
+                <textarea
+                  style={{ ...inputStyle, minHeight: 50, resize: "vertical", fontFamily: "inherit" }}
+                  placeholder="Notes (optional)"
+                  value={patternForm.notes}
+                  onChange={(e) => setPatternForm({ ...patternForm, notes: e.target.value })}
+                />
+              </div>
+              {patternError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 10 }}>
+                  <AlertCircle size={13} /> {patternError}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button onClick={savePattern} disabled={savingPattern} className="dvbc-tap" style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingPattern ? "default" : "pointer", opacity: savingPattern ? 0.8 : 1 }}>
+                  {savingPattern ? "Saving…" : "Save"}
+                </button>
+                <button onClick={resetPatternForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                  Cancel
+                </button>
+                {editingPattern && (
+                  <button onClick={() => deletePattern(editingPattern)} className="dvbc-tap" style={{ background: C.roseBg, color: C.roseDeep, fontWeight: 700, fontSize: 13, padding: "12px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {loadingPatterns && <BrandSpinner />}
+          {!loadingPatterns && patterns.length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No solfège patterns yet.</div>
+          )}
+
+          {!loadingPatterns && patterns.map((p) => {
+            const notes = parseSolfege((p.syllables || []).join(" "));
+            return (
+              <div key={p.id} style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{p.title}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button
+                      onClick={() => playSolfegePattern(p)} className="dvbc-tap"
+                      style={{ width: 30, height: 30, borderRadius: "50%", background: gradient(), border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                      title="Play full pattern"
+                    >
+                      {playingPatternId === p.id ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
+                    </button>
+                    {isAdmin && (
+                      <button onClick={() => startEditPattern(p)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>Edit</button>
+                    )}
+                  </div>
+                </div>
+                {p.notes && <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 10, lineHeight: 1.4 }}>{p.notes}</div>}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {notes.map((n, i) => (
+                    <button
+                      key={i} onClick={() => { haptic(6); playSolfegeTone(p.start_midi, n.semitone); }} className="dvbc-tap"
+                      style={{
+                        minWidth: 44, padding: "8px 10px", borderRadius: 10, border: "none", cursor: "pointer",
+                        background: C.lilacSoft, color: C.plum, fontSize: 13, fontWeight: 700, textAlign: "center",
+                      }}
+                    >
+                      {n.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             );
