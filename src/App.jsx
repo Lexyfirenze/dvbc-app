@@ -754,7 +754,7 @@ function Chip({ active, children, onClick }) {
 
 /* ---------- Screens ---------- */
 function LoginScreen({ onAuthed }) {
-  const [mode, setMode] = useState("signin"); // "signin" | "register"
+  const [mode, setMode] = useState("signin"); // "signin" | "register" | "forgot"
   const [name, setName] = useState("");
   const [part, setPart] = useState(VOICE_PARTS[0]);
   const [email, setEmail] = useState("");
@@ -762,10 +762,33 @@ function LoginScreen({ onAuthed }) {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
+
+    if (mode === "forgot") {
+      if (!email.trim()) {
+        setError("Enter your email to reset your password.");
+        return;
+      }
+      setBusy(true);
+      try {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: window.location.origin,
+        });
+        if (resetError) throw resetError;
+        setNotice("Check your email for a password reset link.");
+      } catch (err) {
+        setError(err.message || "Something went wrong. Please try again.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     if (!email.trim() || !password.trim() || (mode === "register" && !name.trim())) {
       setError("Please fill in every field to continue.");
       return;
@@ -830,11 +853,13 @@ function LoginScreen({ onAuthed }) {
 
       <div style={{ flex: 1, background: C.parchment, borderRadius: "26px 26px 0 0", marginTop: -18, padding: "30px 26px calc(env(safe-area-inset-bottom, 0px) + 30px)" }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: C.ink, marginBottom: 6 }}>
-          {mode === "signin" ? "Welcome back" : "Join the chorale"}
+          {mode === "signin" ? "Welcome back" : mode === "forgot" ? "Reset your password" : "Join the chorale"}
         </div>
         <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 22 }}>
           {mode === "signin"
             ? "Sign in to view rehearsals, mark attendance, and reach your music library."
+            : mode === "forgot"
+            ? "Enter the email on your account and we'll send you a link to set a new password."
             : "Register once — your name and voice part will appear on the shared attendance sheet."}
         </div>
 
@@ -873,8 +898,136 @@ function LoginScreen({ onAuthed }) {
             />
           </div>
 
-          <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>Password</label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "12px 14px", margin: "6px 0 8px" }}>
+          {mode !== "forgot" && (
+            <>
+              <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>Password</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "12px 14px", margin: "6px 0 8px" }}>
+                <Lock size={16} color={C.inkSoft} />
+                <input
+                  value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••" type={showPw ? "text" : "password"}
+                  style={{ border: "none", outline: "none", fontSize: 13.5, flex: 1, background: "transparent", color: C.ink }}
+                />
+                <button type="button" onClick={() => setShowPw((v) => !v)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+                  {showPw ? <EyeOff size={16} color={C.inkSoft} /> : <Eye size={16} color={C.inkSoft} />}
+                </button>
+              </div>
+            </>
+          )}
+
+          {mode === "signin" && (
+            <button
+              type="button"
+              onClick={() => { setMode("forgot"); setError(""); setNotice(""); }}
+              className="dvbc-tap"
+              style={{ display: "block", marginLeft: "auto", fontSize: 11.5, color: C.accent, fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: "4px 0 2px" }}
+            >
+              Forgot password?
+            </button>
+          )}
+
+          {error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 12, margin: "6px 0" }}>
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+
+          {notice && (
+            <div style={{ color: C.sage, fontSize: 12, margin: "6px 0", lineHeight: 1.5 }}>
+              {notice}
+            </div>
+          )}
+
+          <button
+            type="submit" disabled={busy} className="dvbc-tap"
+            style={{
+              width: "100%", background: gradient(), color: "#fff", fontWeight: 600, fontSize: 15,
+              padding: 16, borderRadius: 14, border: "none", cursor: busy ? "default" : "pointer",
+              opacity: busy ? 0.8 : 1, marginTop: mode === "signin" ? 20 : 4,
+            }}
+          >
+            {busy ? "Please wait…" : mode === "signin" ? "Sign In" : mode === "forgot" ? "Send Reset Link" : "Create Account"}
+          </button>
+        </form>
+
+        <div style={{ textAlign: "center", fontSize: 11, color: "#BBAEC4", margin: "18px 0", letterSpacing: 1 }}>— OR —</div>
+        <button
+          onClick={() => { setMode(mode === "register" ? "signin" : mode === "forgot" ? "signin" : "register"); setError(""); setNotice(""); }}
+          className="dvbc-tap"
+          style={{ width: "100%", textAlign: "center", fontSize: 11.5, color: C.inkSoft, background: "none", border: "none", cursor: "pointer" }}
+        >
+          {mode === "signin"
+            ? <>New member? <span style={{ color: C.accent, fontWeight: 700 }}>Register here</span></>
+            : mode === "forgot"
+            ? <>Remembered it? <span style={{ color: C.accent, fontWeight: 700 }}>Back to sign in</span></>
+            : <>Already registered? <span style={{ color: C.accent, fontWeight: 700 }}>Sign in</span></>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      onDone();
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <div style={{ background: gradient(), padding: "calc(env(safe-area-inset-top, 0px) + 40px) 32px 30px", textAlign: "center", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{
+            width: 84, height: 84, borderRadius: "50%", background: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)", overflow: "hidden",
+          }}>
+            <img src={logoImg} alt="logo" style={{ width: "88%", height: "88%", objectFit: "contain" }} />
+          </div>
+        </div>
+        <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 600 }}>
+          De Voci Belli <span style={{ fontStyle: "italic", color: C.lilac }}>Chorale</span>
+        </div>
+        <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, letterSpacing: 2, fontWeight: 600, marginTop: 14 }}>
+          SET A NEW PASSWORD
+        </div>
+      </div>
+
+      <div style={{ flex: 1, background: C.parchment, borderRadius: "26px 26px 0 0", marginTop: -18, padding: "30px 26px calc(env(safe-area-inset-bottom, 0px) + 30px)" }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: C.ink, marginBottom: 6 }}>
+          Choose a new password
+        </div>
+        <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 22 }}>
+          You're signed in via your reset link — pick a new password to finish.
+        </div>
+
+        <form onSubmit={submit}>
+          <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>New Password</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "12px 14px", margin: "6px 0 16px" }}>
             <Lock size={16} color={C.inkSoft} />
             <input
               value={password} onChange={(e) => setPassword(e.target.value)}
@@ -884,6 +1037,16 @@ function LoginScreen({ onAuthed }) {
             <button type="button" onClick={() => setShowPw((v) => !v)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
               {showPw ? <EyeOff size={16} color={C.inkSoft} /> : <Eye size={16} color={C.inkSoft} />}
             </button>
+          </div>
+
+          <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase" }}>Confirm Password</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "12px 14px", margin: "6px 0 8px" }}>
+            <Lock size={16} color={C.inkSoft} />
+            <input
+              value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••••" type={showPw ? "text" : "password"}
+              style={{ border: "none", outline: "none", fontSize: 13.5, flex: 1, background: "transparent", color: C.ink }}
+            />
           </div>
 
           {error && (
@@ -897,23 +1060,12 @@ function LoginScreen({ onAuthed }) {
             style={{
               width: "100%", background: gradient(), color: "#fff", fontWeight: 600, fontSize: 15,
               padding: 16, borderRadius: 14, border: "none", cursor: busy ? "default" : "pointer",
-              opacity: busy ? 0.8 : 1, marginTop: mode === "signin" ? 20 : 4,
+              opacity: busy ? 0.8 : 1, marginTop: 20,
             }}
           >
-            {busy ? "Please wait…" : mode === "signin" ? "Sign In" : "Create Account"}
+            {busy ? "Please wait…" : "Update Password"}
           </button>
         </form>
-
-        <div style={{ textAlign: "center", fontSize: 11, color: "#BBAEC4", margin: "18px 0", letterSpacing: 1 }}>— OR —</div>
-        <button
-          onClick={() => { setMode(mode === "signin" ? "register" : "signin"); setError(""); }}
-          className="dvbc-tap"
-          style={{ width: "100%", textAlign: "center", fontSize: 11.5, color: C.inkSoft, background: "none", border: "none", cursor: "pointer" }}
-        >
-          {mode === "signin"
-            ? <>New member? <span style={{ color: C.accent, fontWeight: 700 }}>Register here</span></>
-            : <>Already registered? <span style={{ color: C.accent, fontWeight: 700 }}>Sign in</span></>}
-        </button>
       </div>
     </div>
   );
@@ -5535,6 +5687,7 @@ export default function App() {
   }, []);
 
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [profile, setProfile] = useState(null);
   const [darkMode, setDarkMode] = useState(() => store.get("dvbc-dark-mode", false));
   const [, forceThemeRerender] = useState(0);
@@ -5664,7 +5817,8 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
       setSession(newSession);
       if (!newSession) setScreen("dashboard");
     });
@@ -6301,6 +6455,15 @@ export default function App() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.parchment }}>
         <BrandSpinner />
+      </div>
+    );
+  }
+
+  if (passwordRecovery && session) {
+    return (
+      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "'Outfit', system-ui, sans-serif" }}>
+        <style>{TAP_STYLES}</style>
+        <ResetPasswordScreen onDone={() => setPasswordRecovery(false)} />
       </div>
     );
   }
