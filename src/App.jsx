@@ -106,6 +106,25 @@ function haptic(pattern = 10) {
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
 }
 
+// Rhythmic haptic for rapid repeated taps (e.g. marking attendance down a roster).
+// Consecutive taps within RHYTHM_WINDOW_MS build a short "streak" that shortens and
+// sharpens the buzz each time, like a beat picking up tempo. A pause resets it, so a
+// single isolated tap always feels like a plain, simple tick.
+const RHYTHM_WINDOW_MS = 650;
+let _rhythmLastTapAt = 0;
+let _rhythmStreak = 0;
+function rhythmicHaptic() {
+  const now = Date.now();
+  _rhythmStreak = (now - _rhythmLastTapAt) < RHYTHM_WINDOW_MS ? _rhythmStreak + 1 : 1;
+  _rhythmLastTapAt = now;
+  // Streak 1: a plain single tick. As the streak builds, taps get shorter/crisper
+  // (like a tempo increasing) up to a steady quick "16th note" pulse at streak 4+.
+  if (_rhythmStreak <= 1) haptic(10);
+  else if (_rhythmStreak === 2) haptic(9);
+  else if (_rhythmStreak === 3) haptic([6, 4, 6]);
+  else haptic([5, 3, 5]);
+}
+
 /* ---------- Synthesized notification chime (no audio asset needed) ---------- */
 let _audioCtx = null;
 function playChime() {
@@ -5724,6 +5743,7 @@ export default function App() {
 
   // Cycle a member's recorded status (present -> absent -> excused -> unmarked) for one event.
   const cycleEventAttendance = useCallback(async (member, eventId, currentStatus) => {
+    rhythmicHaptic();
     const order = ["present", "absent", "excused"];
     const currentIndex = order.indexOf(currentStatus);
     if (currentIndex === order.length - 1) {
@@ -5741,7 +5761,7 @@ export default function App() {
   // Direct set (spreadsheet-style): tap the exact status cell for a member. Tapping the
   // already-active status clears the record back to "not marked".
   const setEventAttendance = useCallback(async (member, eventId, currentStatus, targetStatus) => {
-    haptic(8);
+    rhythmicHaptic();
     if (currentStatus === targetStatus) {
       const { error } = await supabase.from("attendance_records").delete().eq("member_id", member.id).eq("event_id", eventId);
       return { error: error?.message };
@@ -5910,8 +5930,8 @@ export default function App() {
   const TAP_STYLES = `
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Outfit:wght@400;500;600;700&display=swap');
     body, html { font-family: 'Outfit', system-ui, sans-serif; }
-    .dvbc-tap { transition: opacity 0.15s ease, transform 0.15s ease; }
-    .dvbc-tap:active { opacity: 0.7; transform: scale(0.97); }
+    .dvbc-tap { transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.1s ease; }
+    .dvbc-tap:active { opacity: 0.75; transform: scale(0.93); transition: transform 0.05s ease, opacity 0.05s ease; }
     .dvbc-row:active { background: ${C.lilacSoft}; }
     .dvbc-skeleton { position: relative; overflow: hidden; background: ${C.lilacSoft}; }
     .dvbc-skeleton::after {
