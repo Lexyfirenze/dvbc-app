@@ -5207,9 +5207,14 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
   const [profile, setProfile] = useState(null);
   const [darkMode, setDarkMode] = useState(() => store.get("dvbc-dark-mode", false));
+  const [, forceThemeRerender] = useState(0);
   useEffect(() => {
     applyTheme(darkMode ? "dark" : "light");
     store.set("dvbc-dark-mode", darkMode);
+    // C is mutated in place (not React state), so components that already rendered
+    // this pass are still holding stale color values. Force one more render now
+    // that C reflects the new theme, so the switch applies instantly.
+    forceThemeRerender((n) => n + 1);
   }, [darkMode]);
   const [soundEnabled, setSoundEnabled] = useState(() => store.get("dvbc-sound-enabled", true));
   useEffect(() => { store.set("dvbc-sound-enabled", soundEnabled); }, [soundEnabled]);
