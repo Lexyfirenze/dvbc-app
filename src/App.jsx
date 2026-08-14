@@ -4647,13 +4647,14 @@ function SheetMusicViewer({ path, title, onClose }) {
   );
 }
 
-function PracticeLists({ isAdmin, profile }) {
+function PracticeLists({ isAdmin, profile, members = [] }) {
   const myUserId = profile?.user_id;
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openListId, setOpenListId] = useState(null);
   const [filter, setFilter] = useState("All");
   const parts = ["All", "Soprano", "Alto", "Tenor", "Bass"];
+  const [view, setView] = useState("lists"); // "lists" | "assignments"
 
   const [showListForm, setShowListForm] = useState(false);
   const [listContext, setListContext] = useState("group"); // "group" | "personal"
@@ -4681,6 +4682,31 @@ function PracticeLists({ isAdmin, profile }) {
   const [repeatIds, setRepeatIds] = useState(() => new Set());
   const audioRef = useRef(null);
   const RATES = [1, 1.25, 1.5, 0.75];
+
+  /* ---------- Assignments ---------- */
+  const [assignments, setAssignments] = useState([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(true);
+  const [completions, setCompletions] = useState([]); // [{ assignment_id, member_id }]
+  const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(null);
+  const emptyAssignmentForm = { title: "", notes: "", practice_track_id: "", part: "All", assigned_member_id: "", due_date: "" };
+  const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [assignmentError, setAssignmentError] = useState("");
+  const [completingId, setCompletingId] = useState(null);
+
+  const loadAssignments = useCallback(async () => {
+    setLoadingAssignments(true);
+    const [assignmentsRes, completionsRes] = await Promise.all([
+      supabase.from("assignments").select("*").order("due_date", { ascending: true, nullsFirst: false }),
+      supabase.from("assignment_completions").select("assignment_id, member_id"),
+    ]);
+    setAssignments(assignmentsRes.data || []);
+    setCompletions(completionsRes.data || []);
+    setLoadingAssignments(false);
+  }, []);
+
+  useEffect(() => { loadAssignments(); }, [loadAssignments]);
 
   const loadLists = useCallback(async () => {
     setLoading(true);
@@ -4732,6 +4758,111 @@ function PracticeLists({ isAdmin, profile }) {
   const filteredGroupLists = groupLists.filter((l) => filter === "All" || l.voice_part === "All" || l.voice_part.startsWith(filter));
 
   const canManage = (list) => isAdmin || (list && list.owner_user_id === myUserId);
+
+  /* ---------- Assignment helpers ---------- */
+  const allTracksFlat = lists.flatMap((l) => l.tracks.map((t) => ({ ...t, listId: l.id, listTitle: l.title })));
+  const trackById = Object.fromEntries(allTracksFlat.map((t) => [t.id, t]));
+
+  const isAssignedToMe = (a) => a.part === "All" || a.part === profile?.part || a.assigned_member_id === profile?.id;
+  const myAssignments = assignments
+    .filter(isAssignedToMe)
+    .slice()
+    .sort((a, b) => (a.due_date || "9999").localeCompare(b.due_date || "9999"));
+  const myCompletedIds = new Set(completions.filter((c) => c.member_id === profile?.id).map((c) => c.assignment_id));
+
+  const targetCountFor = (a) => {
+    if (a.assigned_member_id) return 1;
+    if (a.part === "All") return members.length || 0;
+    return members.filter((m) => m.part === a.part).length;
+  };
+  const completedCountFor = (a) => completions.filter((c) => c.assignment_id === a.id).length;
+
+  const isOverdue = (a) => a.due_date && a.due_date < new Date().toISOString().slice(0, 10) && !myCompletedIds.has(a.id);
+
+  const resetAssignmentForm = () => {
+    setAssignmentForm(emptyAssignmentForm);
+    setEditingAssignment(null);
+    setShowAssignmentForm(false);
+    setAssignmentError("");
+  };
+
+  const startEditAssignment = (a) => {
+    setEditingAssignment(a);
+    setAssignmentForm({
+      title: a.title || "", notes: a.notes || "", practice_track_id: a.practice_track_id || "",
+      part: a.assigned_member_id ? "Individual" : (a.part || "All"),
+      assigned_member_id: a.assigned_member_id || "", due_date: a.due_date || "",
+    });
+    setShowAssignmentForm(true);
+  };
+
+  const saveAssignment = async () => {
+    if (!assignmentForm.title.trim()) { setAssignmentError("Title is required."); return; }
+    if (assignmentForm.part === "Individual" && !assignmentForm.assigned_member_id) {
+      setAssignmentError("Please choose a member.");
+      return;
+    }
+    setSavingAssignment(true);
+    setAssignmentError("");
+    try {
+      const track = trackById[assignmentForm.practice_track_id];
+      const payload = {
+        title: assignmentForm.title.trim(),
+        notes: assignmentForm.notes.trim() || null,
+        practice_track_id: assignmentForm.practice_track_id || null,
+        practice_list_id: track ? track.listId : null,
+        part: assignmentForm.part === "Individual" ? "Individual" : assignmentForm.part,
+        assigned_member_id: assignmentForm.part === "Individual" ? assignmentForm.assigned_member_id : null,
+        due_date: assignmentForm.due_date || null,
+      };
+      if (editingAssignment) {
+        const { error } = await supabase.from("assignments").update(payload).eq("id", editingAssignment.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("assignments").insert({ ...payload, created_by: profile.id });
+        if (error) throw error;
+      }
+      resetAssignmentForm();
+      loadAssignments();
+    } catch (err) {
+      setAssignmentError(err.message || "Could not save. Please try again.");
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
+  const deleteAssignment = async (a) => {
+    if (!window.confirm(`Delete assignment "${a.title}"?`)) return;
+    await supabase.from("assignment_completions").delete().eq("assignment_id", a.id);
+    await supabase.from("assignments").delete().eq("id", a.id);
+    if (editingAssignment?.id === a.id) resetAssignmentForm();
+    loadAssignments();
+  };
+
+  const toggleAssignmentComplete = async (a) => {
+    haptic(10);
+    setCompletingId(a.id);
+    const alreadyDone = myCompletedIds.has(a.id);
+    if (alreadyDone) {
+      await supabase.from("assignment_completions").delete().eq("assignment_id", a.id).eq("member_id", profile.id);
+      setCompletions((prev) => prev.filter((c) => !(c.assignment_id === a.id && c.member_id === profile.id)));
+    } else {
+      await supabase.from("assignment_completions").insert({ assignment_id: a.id, member_id: profile.id });
+      setCompletions((prev) => [...prev, { assignment_id: a.id, member_id: profile.id }]);
+    }
+    setCompletingId(null);
+  };
+
+  const openAssignmentTrack = (a) => {
+    const track = trackById[a.practice_track_id];
+    if (!track) return;
+    setOpenListId(track.listId);
+    setCurrentTrackId(track.id);
+    setProgress(0);
+    setIsPlaying(true);
+    setPlayerExpanded(true);
+    setTimeout(() => { if (audioRef.current) { audioRef.current.playbackRate = playbackRate; audioRef.current.play(); } }, 0);
+  };
 
   const formatDuration = (secs) => {
     if (!secs || Number.isNaN(secs)) return "0:00";
@@ -5230,6 +5361,34 @@ function PracticeLists({ isAdmin, profile }) {
     <div style={{ paddingBottom: 110 }}>
       <TopHeader title="Practice Lists" subtitle="Personal & group playlists" />
 
+      <div style={{ padding: "16px 24px 0", display: "flex", gap: 8 }}>
+        {[["lists", "Lists"], ["assignments", "Assignments"]].map(([key, label]) => (
+          <button
+            key={key} onClick={() => setView(key)} className="dvbc-tap"
+            style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 12, padding: "10px 0",
+              fontSize: 12.5, fontWeight: 700, position: "relative",
+              background: view === key ? gradient() : C.lilacSoft,
+              color: view === key ? "#fff" : C.inkSoft,
+            }}
+          >
+            {label}
+            {key === "assignments" && myAssignments.filter((a) => !myCompletedIds.has(a.id)).length > 0 && (
+              <span style={{
+                position: "absolute", top: -4, right: 10, minWidth: 16, height: 16, borderRadius: 8,
+                background: view === key ? "rgba(255,255,255,0.9)" : C.roseDeep,
+                color: view === key ? C.garnet : "#fff", fontSize: 9.5, fontWeight: 800,
+                display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+              }}>
+                {myAssignments.filter((a) => !myCompletedIds.has(a.id)).length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {view === "lists" && (
+      <>
       <div style={{ padding: "18px 24px 0" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink }}>Your Practice Lists</div>
@@ -5364,6 +5523,169 @@ function PracticeLists({ isAdmin, profile }) {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {view === "assignments" && (
+        <div style={{ padding: "18px 24px 0" }}>
+          {isAdmin && (
+            <button
+              onClick={() => { resetAssignmentForm(); setShowAssignmentForm(true); }}
+              className="dvbc-tap"
+              style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
+            >
+              + New Assignment
+            </button>
+          )}
+
+          {showAssignmentForm && (
+            <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+                {editingAssignment ? "Edit Assignment" : "New Assignment"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input style={inputStyle} placeholder="Assignment title" value={assignmentForm.title} onChange={(e) => setAssignmentForm({ ...assignmentForm, title: e.target.value })} />
+                <textarea
+                  style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }}
+                  placeholder="Notes (optional) — e.g. measures to focus on"
+                  value={assignmentForm.notes}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, notes: e.target.value })}
+                />
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Link a track (optional)</label>
+                  <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                    <select
+                      value={assignmentForm.practice_track_id}
+                      onChange={(e) => setAssignmentForm({ ...assignmentForm, practice_track_id: e.target.value })}
+                      style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                    >
+                      <option value="">No track</option>
+                      {lists.map((l) => (
+                        <optgroup key={l.id} label={l.title}>
+                          {l.tracks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Assign to</label>
+                  <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                    <select
+                      value={assignmentForm.part}
+                      onChange={(e) => setAssignmentForm({ ...assignmentForm, part: e.target.value, assigned_member_id: "" })}
+                      style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                    >
+                      <option value="All">Everyone</option>
+                      {VOICE_PARTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                      <option value="Individual">Specific member…</option>
+                    </select>
+                  </div>
+                  {assignmentForm.part === "Individual" && (
+                    <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 12, padding: "4px 10px", marginTop: 8 }}>
+                      <select
+                        value={assignmentForm.assigned_member_id}
+                        onChange={(e) => setAssignmentForm({ ...assignmentForm, assigned_member_id: e.target.value })}
+                        style={{ border: "none", outline: "none", fontSize: 13.5, width: "100%", background: "transparent", color: C.ink, padding: "10px 4px" }}
+                      >
+                        <option value="">Choose a member</option>
+                        {members.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Due date (optional)</label>
+                  <input
+                    type="date" style={inputStyle} value={assignmentForm.due_date}
+                    onChange={(e) => setAssignmentForm({ ...assignmentForm, due_date: e.target.value })}
+                  />
+                </div>
+              </div>
+              {assignmentError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 11.5, marginTop: 10 }}>
+                  <AlertCircle size={13} /> {assignmentError}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button onClick={saveAssignment} disabled={savingAssignment} className="dvbc-tap" style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingAssignment ? "default" : "pointer", opacity: savingAssignment ? 0.8 : 1 }}>
+                  {savingAssignment ? "Saving…" : "Save"}
+                </button>
+                <button onClick={resetAssignmentForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+                  Cancel
+                </button>
+                {editingAssignment && (
+                  <button onClick={() => deleteAssignment(editingAssignment)} className="dvbc-tap" style={{ background: C.roseBg, color: C.roseDeep, fontWeight: 700, fontSize: 13, padding: "12px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {loadingAssignments && <BrandSpinner />}
+          {!loadingAssignments && myAssignments.length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No assignments yet.</div>
+          )}
+
+          {!loadingAssignments && myAssignments.map((a) => {
+            const done = myCompletedIds.has(a.id);
+            const overdue = isOverdue(a);
+            const track = trackById[a.practice_track_id];
+            return (
+              <div
+                key={a.id}
+                style={{
+                  background: C.card, border: `1.4px solid ${overdue ? C.roseDeep : C.lilacLine}`, borderRadius: 14,
+                  padding: 14, marginBottom: 10, opacity: done ? 0.72 : 1,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <button
+                    onClick={() => toggleAssignmentComplete(a)} disabled={completingId === a.id} className="dvbc-tap"
+                    style={{
+                      width: 24, height: 24, borderRadius: "50%", flexShrink: 0, marginTop: 1, cursor: "pointer",
+                      border: `2px solid ${done ? C.sage : C.lilacLine}`, background: done ? C.sage : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                    title={done ? "Mark as not done" : "Mark as done"}
+                  >
+                    {done && <CheckSquare size={13} color="#fff" />}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, textDecoration: done ? "line-through" : "none" }}>{a.title}</div>
+                    {a.notes && <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 3, lineHeight: 1.4 }}>{a.notes}</div>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                      {a.due_date && (
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: overdue ? C.roseDeep : C.inkSoft }}>
+                          {overdue ? "Overdue · " : "Due "}{new Date(a.due_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        </span>
+                      )}
+                      <Pill tone={a.assigned_member_id ? "gold" : "gold"}>{a.assigned_member_id ? "Just for you" : a.part}</Pill>
+                      {isAdmin && (
+                        <span style={{ fontSize: 10.5, color: C.inkSoft }}>{completedCountFor(a)}/{targetCountFor(a)} done</span>
+                      )}
+                    </div>
+                    {track && (
+                      <button
+                        onClick={() => openAssignmentTrack(a)} className="dvbc-tap"
+                        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 10, color: C.plum, fontSize: 11.5, fontWeight: 700 }}
+                      >
+                        <Play size={12} color={C.plum} fill={C.plum} /> {track.title}
+                      </button>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <button onClick={() => startEditAssignment(a)} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0, flexShrink: 0 }}>Edit</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -6538,7 +6860,7 @@ export default function App() {
       onCreateConversation={createConversation} onGoToMessages={() => setScreen("messages")}
     />
   );
-  else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} />;
+  else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} members={members} />;
   else if (screen === "privacy") content = <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "about") content = <StaticPage title="About Us" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "profile") content = (
