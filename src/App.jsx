@@ -1156,7 +1156,13 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         </div>
 
         {nextEvent ? (
-          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ display: "block", width: "100%", textAlign: "left", background: gradient(), borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative", border: "none", cursor: "pointer" }}>
+          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ display: "block", width: "100%", textAlign: "left", background: gradient(), borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative", border: "none", cursor: "pointer", overflow: "hidden" }}>
+            {/* Faint sheet-music ruling in the background, purely decorative */}
+            <div aria-hidden="true" style={{
+              position: "absolute", inset: 0, opacity: 0.14, pointerEvents: "none",
+              backgroundImage: "repeating-linear-gradient(to bottom, transparent 0, transparent 8px, rgba(255,255,255,0.9) 8px, rgba(255,255,255,0.9) 9px)",
+            }} />
+            <div style={{ position: "relative" }}>
             <div style={{ position: "absolute", top: 18, right: 18, background: "rgba(255,255,255,0.16)", fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 999 }}>
               {phase === "ongoing" ? "Ongoing" : formatEventDay(nextEvent.start_time)}
             </div>
@@ -1184,6 +1190,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
               </div>
             )}
             {checkInError && <div style={{ marginTop: 8, fontSize: 11, color: "#FBEAF1" }}>{checkInError}</div>}
+            </div>
           </button>
         ) : (
           <div style={{ background: gradient(), borderRadius: 20, padding: 20, marginTop: 16, color: "#fff" }}>
