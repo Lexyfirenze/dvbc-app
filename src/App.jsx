@@ -223,7 +223,7 @@ function HeroCarousel({ photos, height = 190, intervalMs = 4500 }) {
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(36,18,70,0.88) 0%, rgba(36,18,70,0.15) 55%, rgba(36,18,70,0) 100%)" }} />
       <div style={{ position: "absolute", left: 18, right: 18, bottom: 16, color: "#fff" }}>
         <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Our Chorale</div>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 3 }}>Beautiful voices, one family</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, marginTop: 3 }}>Beautiful voices, one family</div>
       </div>
       {photos.length > 1 && (
         <div style={{ position: "absolute", top: 14, right: 14, display: "flex", gap: 5 }}>
@@ -343,7 +343,7 @@ function OnboardingTour({ profile }) {
         }}>
           <slide.Icon size={24} color="#fff" />
         </div>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 19, color: C.ink }}>{slide.title}</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 19, color: C.ink }}>{slide.title}</div>
         <div style={{ fontSize: 13.5, color: C.inkSoft, marginTop: 8, lineHeight: 1.5 }}>{slide.body}</div>
 
         <div style={{ display: "flex", gap: 6, marginTop: 22 }}>
@@ -791,7 +791,7 @@ function LoginScreen({ onAuthed }) {
             <img src={logoImg} alt="logo" style={{ width: "88%", height: "88%", objectFit: "contain" }} />
           </div>
         </div>
-        <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 24, fontWeight: 600 }}>
+        <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 600 }}>
           De Voci Belli <span style={{ fontStyle: "italic", color: C.lilac }}>Chorale</span>
         </div>
         <div style={{ color: C.lilac, fontSize: 11, letterSpacing: 4, fontWeight: 700, marginTop: 3 }}>NIGERIA</div>
@@ -802,7 +802,7 @@ function LoginScreen({ onAuthed }) {
       </div>
 
       <div style={{ flex: 1, background: C.parchment, borderRadius: "26px 26px 0 0", marginTop: -18, padding: "30px 26px calc(env(safe-area-inset-bottom, 0px) + 30px)" }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 22, color: C.ink, marginBottom: 6 }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: C.ink, marginBottom: 6 }}>
           {mode === "signin" ? "Welcome back" : "Join the chorale"}
         </div>
         <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5, marginBottom: 22 }}>
@@ -905,7 +905,7 @@ function PendingApproval({ profile, onLogout }) {
             <img src={logoImg} alt="logo" style={{ width: "88%", height: "88%", objectFit: "contain" }} />
           </div>
         </div>
-        <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 24, fontWeight: 600 }}>
+        <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 600 }}>
           De Voci Belli <span style={{ fontStyle: "italic", color: C.lilac }}>Chorale</span>
         </div>
         <div style={{ color: C.lilac, fontSize: 11, letterSpacing: 4, fontWeight: 700, marginTop: 3 }}>NIGERIA</div>
@@ -915,7 +915,7 @@ function PendingApproval({ profile, onLogout }) {
         <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.amberBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
           <Clock size={26} color={C.amberText} />
         </div>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.ink, marginBottom: 8 }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.ink, marginBottom: 8 }}>
           Awaiting Approval
         </div>
         <div style={{ fontSize: 13, color: C.inkSoft, lineHeight: 1.6, maxWidth: 280 }}>
@@ -940,7 +940,7 @@ function PendingApproval({ profile, onLogout }) {
 function TopHeader({ title, subtitle }) {
   return (
     <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0" }}>
-      <div style={{ fontFamily: "Lora, serif", fontSize: 23, color: C.ink }}>{title}</div>
+      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 23, color: C.ink }}>{title}</div>
       {subtitle && <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 3 }}>{subtitle}</div>}
       <div style={{ marginTop: 14 }}><Staff /></div>
     </div>
@@ -1102,7 +1102,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
       <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 24px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div style={{ fontSize: 12, color: C.inkSoft }}>{greeting}</div>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 23, color: C.ink, marginTop: 2 }}>{displayName}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 23, color: C.ink, marginTop: 2 }}>{displayName}</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button
@@ -1137,7 +1137,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
               {phase === "ongoing" ? "Ongoing" : formatEventDay(nextEvent.start_time)}
             </div>
             <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Event</div>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, marginTop: 8 }}>{nextEvent.title}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, marginTop: 8 }}>{nextEvent.title}</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
               <Clock size={13} /> {formatEventTimeRange(nextEvent)}
             </div>
@@ -1164,7 +1164,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         ) : (
           <div style={{ background: gradient(), borderRadius: 20, padding: 20, marginTop: 16, color: "#fff" }}>
             <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Event</div>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 8 }}>No upcoming events yet</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, marginTop: 8 }}>No upcoming events yet</div>
           </div>
         )}
 
@@ -1176,7 +1176,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
             <div style={{ fontSize: 11, color: C.inkSoft }}>Your<br />Attendance</div>
           </button>
           <button onClick={() => onNav("library")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 21, color: C.garnet }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 21, color: C.garnet }}>
               {(pieces || []).filter((p) => p.is_ready).length}/{(pieces || []).length}
             </div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Pieces Ready</div>
@@ -1206,7 +1206,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         </a>
 
         <div ref={announcementsRef} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Announcements</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink }}>Announcements</div>
           {isAdmin && (
             <button
               onClick={() => setComposerOpen((v) => !v)}
@@ -1229,7 +1229,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
               placeholder="Write an announcement for the chorale…"
               rows={3}
               style={{
-                width: "100%", border: "none", outline: "none", resize: "none", fontFamily: "Inter, system-ui, sans-serif",
+                width: "100%", border: "none", outline: "none", resize: "none", fontFamily: "'Outfit', system-ui, sans-serif",
                 fontSize: 13.5, color: C.ink, background: "transparent", boxSizing: "border-box",
               }}
             />
@@ -1497,7 +1497,7 @@ function CumulativeRegister({ members, loadingMembers }) {
   return (
     <div style={{ padding: "6px 24px 0" }}>
       <div style={{ margin: "10px 0 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 4 }}>Cumulative Register</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, marginBottom: 4 }}>Cumulative Register</div>
         <div style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.5 }}>
           Present, absent, and excused counts across recorded rehearsals, with each member's overall attendance rate.
         </div>
@@ -1545,7 +1545,7 @@ function CumulativeRegister({ members, loadingMembers }) {
       {!busy && groupedSections.map((g, i) => (
         <div key={g.section} style={{ marginTop: i === 0 ? 20 : 22 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>{g.label}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink }}>{g.label}</div>
             <div style={{ fontSize: 12, color: C.inkSoft }}>({g.rows.length})</div>
           </div>
           {g.rows.map(({ member: m, stats }) => {
@@ -1556,7 +1556,7 @@ function CumulativeRegister({ members, loadingMembers }) {
                 <div style={{
                   width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
                   background: avColor.bg, color: avColor.fg, display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+                  fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 13,
                 }}>
                   {m.avatar_url
                     ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1573,7 +1573,7 @@ function CumulativeRegister({ members, loadingMembers }) {
                   <Pill tone="absent">{stats.absent}A</Pill>
                   <Pill tone="excused">{stats.excused}E</Pill>
                 </div>
-                <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: rate === null ? C.inkSoft : C.garnet, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, color: rate === null ? C.inkSoft : C.garnet, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
                   {rate === null ? "—" : `${rate}%`}
                 </div>
               </div>
@@ -1751,7 +1751,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
         <div style={{
           width: 38, height: 38, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
           background: avColor.bg, color: avColor.fg, display: "flex", alignItems: "center", justifyContent: "center",
-          fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+          fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 13,
         }}>
           {m.avatar_url
             ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1902,7 +1902,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
           <div style={{ margin: "16px 24px 0", background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 18, padding: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
               <div>
-                <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>{selectedEvent.title}</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink }}>{selectedEvent.title}</div>
                 <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
                   <Clock size={12} /> {formatEventTimeRange(selectedEvent)}
                 </div>
@@ -2020,11 +2020,11 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                 ) : (
                   <div style={{ display: "flex", gap: 10 }}>
                     <div style={{ flex: 1, textAlign: "center", background: C.sageBg, borderRadius: 12, padding: "8px 4px" }}>
-                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.sage }}>{availableCount}</div>
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.sage }}>{availableCount}</div>
                       <div style={{ fontSize: 9.5, color: C.sage, textTransform: "uppercase", letterSpacing: 0.4 }}>Available</div>
                     </div>
                     <div style={{ flex: 1, textAlign: "center", background: C.amberBg, borderRadius: 12, padding: "8px 4px" }}>
-                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.amberText }}>{excusedCount}</div>
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.amberText }}>{excusedCount}</div>
                       <div style={{ fontSize: 9.5, color: C.amberText, textTransform: "uppercase", letterSpacing: 0.4 }}>Excused</div>
                     </div>
                   </div>
@@ -2111,15 +2111,15 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
 
               <div style={{ display: "flex", gap: 10, padding: "16px 24px 0" }}>
                 <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
-                  <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.sage }}>{present}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.sage }}>{present}</div>
                   <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Present</div>
                 </div>
                 <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
-                  <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.roseDeep }}>{absent}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.roseDeep }}>{absent}</div>
                   <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Absent</div>
                 </div>
                 <div style={{ flex: 1, textAlign: "center", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 14, padding: "12px 6px" }}>
-                  <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.amberText }}>{excused}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.amberText }}>{excused}</div>
                   <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Excused</div>
                 </div>
               </div>
@@ -2183,7 +2183,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                 {!loading && !loadingRecords && groupedSections.map((g, i) => (
                   <div key={g.section} style={{ marginTop: i === 0 ? 0 : 22 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-                      <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>{g.label}</div>
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink }}>{g.label}</div>
                       <div style={{ fontSize: 12, color: C.inkSoft }}>({g.rows.length})</div>
                     </div>
                     {g.rows.map((m) => renderMemberRow(m))}
@@ -2762,7 +2762,7 @@ function Messages({
           <button onClick={() => setOpenPostId(null)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
             <ChevronLeft size={20} color={C.ink} />
           </button>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink, flex: 1 }}>Post</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.ink, flex: 1 }}>Post</div>
           {isAdmin && (
             <button
               onClick={() => {
@@ -2783,7 +2783,7 @@ function Messages({
             <div style={{
               width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
               background: avatarColorFor(openPostData.author?.name).bg, color: avatarColorFor(openPostData.author?.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+              fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 14,
             }}>
               {openPostData.author?.avatar_url
                 ? <img src={openPostData.author.avatar_url} alt={openPostData.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -2803,7 +2803,7 @@ function Messages({
         <div style={{ margin: "20px 24px 0" }}><Staff /></div>
 
         <div style={{ padding: "16px 24px 0" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
             {(openPostData.comments || []).length} {(openPostData.comments || []).length === 1 ? "Comment" : "Comments"}
           </div>
           {(openPostData.comments || []).length === 0 && (
@@ -2813,7 +2813,7 @@ function Messages({
               <div style={{
                 width: 30, height: 30, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
                 background: avatarColorFor(c.author?.name).bg, color: avatarColorFor(c.author?.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
-                fontFamily: "Lora, serif", fontWeight: 600, fontSize: 11,
+                fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 11,
               }}>
                 {c.author?.avatar_url
                   ? <img src={c.author.avatar_url} alt={c.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -2869,7 +2869,7 @@ function Messages({
             <ChevronLeft size={20} color={C.ink} />
           </button>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>{title}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.ink }}>{title}</div>
             {otherMember && (
               <div style={{ fontSize: 10.5, color: isOnline(otherMember.last_seen_at) ? "#3FB27F" : C.inkSoft, fontWeight: 600, marginTop: -1 }}>
                 {presenceLabel(otherMember.last_seen_at)}
@@ -3071,7 +3071,7 @@ function Messages({
         <button onClick={onBack} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
           <ChevronLeft size={20} color={C.ink} />
         </button>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.ink }}>Messages</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.ink }}>Messages</div>
       </div>
       <div style={{ margin: "14px 24px 0" }}><Staff /></div>
 
@@ -3082,7 +3082,7 @@ function Messages({
 
       {tab === "posts" && (
         <div style={{ padding: "18px 24px 0" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
 
           {loading && <BrandSpinner />}
           {!loading && posts.length === 0 && (
@@ -3104,7 +3104,7 @@ function Messages({
                 <div style={{
                   width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
                   background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+                  fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 14,
                 }}>
                   {post.author?.avatar_url
                     ? <img src={post.author.avatar_url} alt={post.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -3139,7 +3139,7 @@ function Messages({
       {tab === "chats" && (
         <div style={{ padding: "18px 24px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Chats</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink }}>Chats</div>
             <button
               onClick={() => setNewChatOpen(true)} className="dvbc-tap"
               style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "7px 13px", borderRadius: 10, border: "none", cursor: "pointer" }}
@@ -3185,7 +3185,7 @@ function Messages({
                 <div style={{
                   width: 44, height: 44, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
                   background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 14,
+                  fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 14,
                 }}>
                   {avatarUrl
                     ? <img src={avatarUrl} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -3231,7 +3231,7 @@ function Messages({
           display: "flex", alignItems: "flex-end",
         }}>
           <div style={{ background: "#fff", width: "100%", borderRadius: "20px 20px 0 0", padding: "20px 24px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New leadership post</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New leadership post</div>
             <textarea
               value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Share an update with the chorale…"
               style={{
@@ -3263,7 +3263,7 @@ function Messages({
           display: "flex", alignItems: "flex-end",
         }}>
           <div style={{ background: "#fff", width: "100%", maxHeight: "82vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: "20px 24px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New chat</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New chat</div>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               <Chip active={!isGroupMode} onClick={() => { setIsGroupMode(false); setSelectedMemberIds([]); }}>Direct</Chip>
@@ -3293,7 +3293,7 @@ function Messages({
                     <div style={{
                       width: 32, height: 32, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
                       background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-                      fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
+                      fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 12,
                     }}>
                       {m.avatar_url
                         ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -3465,7 +3465,7 @@ function Executives({ isAdmin }) {
 
       <div style={{ padding: "18px 24px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Executives</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink }}>Executives</div>
           {isAdmin && (
             <button
               onClick={() => { setEditingExec(null); setExecForm({ name: "", role: "", bio: "", contact: "" }); setShowExecForm(true); }}
@@ -3487,7 +3487,7 @@ function Executives({ isAdmin }) {
             <div style={{
               width: 56, height: 56, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
               background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 18, border: `2px solid ${C.lilac}`,
+              fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 18, border: `2px solid ${C.lilac}`,
             }}>
               {exec.photo_url
                 ? <img src={exec.photo_url} alt={exec.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -3510,7 +3510,7 @@ function Executives({ isAdmin }) {
 
         {showExecForm && (
           <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 14 }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
               {editingExec ? "Edit Executive" : "Add Executive"}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3537,7 +3537,7 @@ function Executives({ isAdmin }) {
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "28px 0 4px" }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink }}>Voice Part Leaders</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink }}>Voice Part Leaders</div>
           {isAdmin && (
             <button
               onClick={() => { setEditingLeader(null); setLeaderForm({ name: "", voice_part: VOICE_PARTS[0] }); setShowLeaderForm(true); }}
@@ -3558,7 +3558,7 @@ function Executives({ isAdmin }) {
             <div style={{
               width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
               background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 13,
+              fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 13,
             }}>
               {leader.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
             </div>
@@ -3577,7 +3577,7 @@ function Executives({ isAdmin }) {
 
         {showLeaderForm && (
           <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 14 }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
               {editingLeader ? "Edit Leader" : "Add Voice Part Leader"}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3614,7 +3614,7 @@ function StaticPage({ title, content, onBack }) {
         <button onClick={onBack} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
           <ChevronLeft size={20} color={C.ink} />
         </button>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.ink }}>{title}</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.ink }}>{title}</div>
       </div>
       <div style={{ margin: "14px 24px 0" }}><Staff /></div>
       <div style={{ padding: "20px 24px 0", fontSize: 13, color: C.inkSoft, lineHeight: 1.7, whiteSpace: "pre-line" }}>
@@ -3669,25 +3669,25 @@ function MemberProfileModal({ member, onClose }) {
               width: 76, height: 76, borderRadius: "50%", margin: "0 auto 10px", overflow: "hidden",
               background: avatarColorFor(member.name).bg, color: avatarColorFor(member.name).fg,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "Lora, serif", fontWeight: 600, fontSize: 26,
+              fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 26,
             }}>
               {member.avatar_url ? <img src={member.avatar_url} alt={member.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : member.name.charAt(0)}
             </div>
             <div style={{ position: "absolute", bottom: 8, right: 0 }}><PresenceDot online={online} size={14} /></div>
           </div>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 19, color: C.ink }}>{member.name}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 19, color: C.ink }}>{member.name}</div>
           <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 2 }}>{member.part}{member.is_admin ? " Â· Admin" : ""}</div>
           <div style={{ fontSize: 11.5, color: online ? "#3FB27F" : C.inkSoft, fontWeight: 600, marginTop: 4 }}>{presenceLabel(member.last_seen_at)}</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
           <div style={{ flex: 1, background: C.lilacSoft, borderRadius: 14, padding: 14, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
             <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>Attendance</div>
           </div>
           {birthday && (
             <div style={{ flex: 1, background: C.lilacSoft, borderRadius: 14, padding: 14, textAlign: "center" }}>
-              <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.garnet }}>{birthday}</div>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.garnet }}>{birthday}</div>
               <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>Birthday</div>
             </div>
           )}
@@ -3750,7 +3750,7 @@ function OwnContactInfo({ profile, onSave }) {
   return (
     <div style={{ marginTop: 24, background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink }}>Your details</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink }}>Your details</div>
         {!editing && (
           <button onClick={startEdit} className="dvbc-tap" style={{ background: "none", border: "none", color: C.plum, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
             Edit
@@ -3866,7 +3866,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             <div style={{
               width: 72, height: 72, borderRadius: "50%", background: "#fff", margin: "0 auto 12px",
               display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-              fontFamily: "Lora, serif", fontStyle: "italic", fontWeight: 600, fontSize: 24, color: C.garnet,
+              fontFamily: "'Playfair Display', serif", fontStyle: "italic", fontWeight: 600, fontSize: 24, color: C.garnet,
               border: `3px solid ${C.lilac}`,
             }}>
               {profile?.avatar_url
@@ -3891,7 +3891,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
         </div>
         {avatarUploading && <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: -6, marginBottom: 6 }}>Uploading photo…</div>}
         {avatarError && <div style={{ color: "#FBEAF1", fontSize: 11, marginTop: -6, marginBottom: 6 }}>{avatarError}</div>}
-        <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 20 }}>{displayName}</div>
+        <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 20 }}>{displayName}</div>
         <div style={{ color: C.lilac, fontSize: 12, marginTop: 2 }}>
           {profile?.part || ""}{profile?.is_admin ? " · Admin" : ""}
         </div>
@@ -3900,21 +3900,21 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
       <div style={{ padding: "20px 24px" }}>
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{members.length}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.garnet }}>{members.length}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Registered members</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "—" : presentNow}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "—" : presentNow}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present, next event</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
             <RingProgress value={attendancePct ?? 0} size={36} strokeWidth={4} color={C.garnet} track={C.lilacLine} />
-            <div style={{ fontFamily: "Lora, serif", fontSize: 14, color: C.garnet, marginTop: -4 }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, color: C.garnet, marginTop: -4 }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
             <div style={{ fontSize: 11, color: C.inkSoft }}>My attendance</div>
           </div>
         </div>
 
-        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Settings</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Settings</div>
         <div
           onClick={() => { haptic(8); onToggleDarkMode?.(); }}
           className="dvbc-tap"
@@ -3994,7 +3994,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
 
         {isAdmin && (
           <>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, margin: "24px 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
               Pending Approvals
               {pending.length > 0 && (
                 <span style={{ background: C.roseBg, color: C.roseDeep, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999 }}>{pending.length}</span>
@@ -4008,7 +4008,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
                 <div style={{
                   width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
                   background: avatarColorFor(m.name).bg, color: avatarColorFor(m.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
+                  fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 12,
                 }}>
                   {m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                 </div>
@@ -4036,7 +4036,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
         )}
 
         <>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Members</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, margin: "24px 0 10px" }}>Members</div>
           {memberActionError && (
             <div style={{ fontSize: 12, color: C.roseDeep, background: C.roseBg, borderRadius: 10, padding: "8px 12px", marginBottom: 8 }}>
               {memberActionError}
@@ -4056,7 +4056,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
                   <div style={{
                     width: 34, height: 34, borderRadius: "50%", overflow: "hidden",
                     background: avatarColorFor(m.name).bg, color: avatarColorFor(m.name).fg, display: "flex", alignItems: "center", justifyContent: "center",
-                    fontFamily: "Lora, serif", fontWeight: 600, fontSize: 12,
+                    fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 12,
                   }}>
                     {m.avatar_url ? <img src={m.avatar_url} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : m.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                   </div>
@@ -4157,7 +4157,7 @@ function SheetMusicViewer({ path, title, onClose }) {
     >
       <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+          <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
           {isOfflineCopy && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10.5, marginTop: 2 }}>Viewing saved offline copy</div>}
         </div>
         <button onClick={onClose} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexShrink: 0, marginLeft: 12 }}>
@@ -4580,7 +4580,7 @@ function PracticeLists({ isAdmin, profile }) {
         </div>
 
         <div style={{ padding: "10px 26px calc(env(safe-area-inset-bottom, 0px) + 26px)" }}>
-          <div style={{ color: "#fff", fontFamily: "Lora, serif", fontSize: 19, marginBottom: 2 }}>{currentTrack.title}</div>
+          <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 19, marginBottom: 2 }}>{currentTrack.title}</div>
           {currentTrack.composer && <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12.5, marginBottom: 18 }}>{currentTrack.composer}</div>}
 
           <div onClick={seekTo} style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.22)", cursor: "pointer", position: "relative", marginTop: currentTrack.composer ? 0 : 18 }}>
@@ -4625,7 +4625,7 @@ function PracticeLists({ isAdmin, profile }) {
           <button onClick={() => setOpenListId(null)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
             <ChevronLeft size={20} color={C.ink} />
           </button>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 18, color: C.ink }}>{openList.title}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.ink }}>{openList.title}</div>
         </div>
         <div style={{ padding: "6px 24px 0" }}>
           <Pill>{openList.owner_user_id ? "Personal" : openList.voice_part}</Pill>
@@ -4704,7 +4704,7 @@ function PracticeLists({ isAdmin, profile }) {
 
           {showTrackForm && (
             <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 14 }}>
-              <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
                 {editingTrack ? "Edit Track" : "Add Track"}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -4773,7 +4773,7 @@ function PracticeLists({ isAdmin, profile }) {
 
       <div style={{ padding: "18px 24px 0" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Your Practice Lists</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink }}>Your Practice Lists</div>
         </div>
         <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
           {personalLists.map((list) => (
@@ -4806,7 +4806,7 @@ function PracticeLists({ isAdmin, profile }) {
       </div>
 
       <div style={{ padding: "22px 24px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Group Practice Lists</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink }}>Group Practice Lists</div>
         <div style={{ border: `1.4px solid ${C.lilacLine}`, background: "#fff", borderRadius: 10, padding: "2px 6px" }}>
           <select
             value={filter} onChange={(e) => setFilter(e.target.value)}
@@ -4865,7 +4865,7 @@ function PracticeLists({ isAdmin, profile }) {
 
         {showListForm && (
           <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 16 }}>
-            <div style={{ fontFamily: "Lora, serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink, marginBottom: 10 }}>
               {editingList ? "Edit List" : listContext === "personal" ? "New Personal List" : "New Group List"}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -4987,7 +4987,7 @@ class ErrorBoundary extends React.Component {
           justifyContent: "center", padding: "40px 24px", textAlign: "center",
         }}>
           <AlertCircle size={30} color={C.roseDeep} />
-          <div style={{ fontFamily: "Lora, serif", fontSize: 17, color: C.ink, marginTop: 14 }}>Something went wrong</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink, marginTop: 14 }}>Something went wrong</div>
           <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 8, lineHeight: 1.5, maxWidth: 280 }}>
             This screen ran into a problem. You can try again, or head back to the dashboard — nothing else in the app is affected.
           </div>
@@ -5028,7 +5028,7 @@ function IncomingCallBanner({ call, onAccept, onDecline }) {
           : <User size={40} color={C.garnet} />}
       </div>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontFamily: "Lora, serif", fontSize: 22, color: "#fff" }}>{call.callerName || "Someone"}</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: "#fff" }}>{call.callerName || "Someone"}</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>Incoming call…</div>
       </div>
       <div style={{ display: "flex", gap: 40, marginTop: 16 }}>
@@ -5908,6 +5908,8 @@ export default function App() {
   }, []);
 
   const TAP_STYLES = `
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Outfit:wght@400;500;600;700&display=swap');
+    body, html { font-family: 'Outfit', system-ui, sans-serif; }
     .dvbc-tap { transition: opacity 0.15s ease, transform 0.15s ease; }
     .dvbc-tap:active { opacity: 0.7; transform: scale(0.97); }
     .dvbc-row:active { background: ${C.lilacSoft}; }
@@ -5942,7 +5944,7 @@ export default function App() {
 
   if (!session) {
     return (
-      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "'Outfit', system-ui, sans-serif" }}>
         <style>{TAP_STYLES}</style>
         <LoginScreen onAuthed={() => {}} />
       </div>
@@ -5959,7 +5961,7 @@ export default function App() {
 
   if (profile.approval_status === "pending") {
     return (
-      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "'Outfit', system-ui, sans-serif" }}>
         <style>{TAP_STYLES}</style>
         <PendingApproval profile={profile} onLogout={logout} />
       </div>
@@ -6017,7 +6019,7 @@ export default function App() {
   const showBottomNav = ["dashboard", "attendance", "library", "practice", "executives", "profile"].includes(screen);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "Inter, system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: C.parchment, fontFamily: "'Outfit', system-ui, sans-serif" }}>
       <style>{TAP_STYLES}</style>
       <ErrorBoundary key={screen} onGoHome={() => setScreen("dashboard")}>
         <div key={screen} className="dvbc-screen-enter">{content}</div>
