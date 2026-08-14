@@ -11,18 +11,19 @@ import photoImg3 from "./assets/chorale-photo-3.jpg";
 import { supabase } from "./supabaseClient";
 import { generateICS, downloadICS } from './utils/dvbc-ics-export.js';
 
-/* ---------- Design tokens: indigo / violet / lavender interface ---------- */
+/* ---------- Design tokens: "Sunday Performance" warm concert-hall palette ---------- */
+/* Actual values live in LIGHT_THEME/DARK_THEME below; this is just the initial shape. */
 const C = {
-  garnet: "#4C2E9E",
-  garnetDark: "#241246",
-  plum: "#7A56D6",
-  lilac: "#C6B8F0",
-  lilacSoft: "#F1EDFC",
-  lilacLine: "#E3DAF7",
-  ink: "#231A3B",
-  inkSoft: "#736C87",
+  garnet: "#8A2332",
+  garnetDark: "#5C1420",
+  plum: "#C99A3E",
+  lilac: "#D9B98A",
+  lilacSoft: "#F5E9D3",
+  lilacLine: "#EAD9B8",
+  ink: "#2B2119",
+  inkSoft: "#7A6952",
   card: "#FFFFFF",
-  parchment: "#F7F5FD",
+  parchment: "#FBF6EC",
   sage: "#4F7A5C",
   sageBg: "#E7F1E9",
   roseDeep: "#B23368",
@@ -31,7 +32,12 @@ const C = {
   amberText: "#8A6C24",
 };
 
-const GRADIENT = `linear-gradient(135deg, ${C.garnetDark} 0%, ${C.garnet} 45%, ${C.plum} 100%)`;
+// A function (not a fixed string) so it always reflects the *current* theme's
+// colors — previously this was computed once at module load using light-mode
+// values only, so dark mode never actually changed any gradient anywhere.
+function gradient() {
+  return `linear-gradient(135deg, ${C.garnetDark} 0%, ${C.garnet} 45%, ${C.plum} 100%)`;
+}
 const VOICE_PARTS = ["Soprano I", "Soprano II", "Alto I", "Alto II", "Tenor I", "Tenor II", "Bass I", "Bass II"];
 const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/625qw7lnZ6C7tYDOs7ioC3?s=sh&p=a&mlu=4";
 const HERO_PHOTOS = [photoImg, photoImg2, photoImg3];
@@ -43,25 +49,42 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
-/* ---------- Theming: light/dark token sets, applied by mutating C in place ---------- */
-const LIGHT_THEME = { ...C };
+/* ---------- Theming: "Sunday Performance" (light) / "Evening Concert" (dark) ---------- */
+const LIGHT_THEME = {
+  garnet: "#8A2332",
+  garnetDark: "#5C1420",
+  plum: "#C99A3E",
+  lilac: "#D9B98A",
+  lilacSoft: "#F5E9D3",
+  lilacLine: "#EAD9B8",
+  ink: "#2B2119",
+  inkSoft: "#7A6952",
+  card: "#FFFFFF",
+  parchment: "#FBF6EC",
+  sage: "#4F7A5C",
+  sageBg: "#E7F1E9",
+  roseDeep: "#B23368",
+  roseBg: "#FBEAF1",
+  amberBg: "#F6EFD8",
+  amberText: "#8A6C24",
+};
 const DARK_THEME = {
-  garnet: "#9C86E8",
-  garnetDark: "#150C29",
-  plum: "#B29CF2",
+  garnet: "#2A1750",
+  garnetDark: "#140B26",
+  plum: "#E24B9C",
   lilac: "#4A3C7A",
   lilacSoft: "#241A3D",
-  lilacLine: "#372B5C",
-  ink: "#EFE9FA",
-  inkSoft: "#A79BC9",
-  card: "#1B1330",
-  parchment: "#100A1F",
-  sage: "#8FD1A0",
-  sageBg: "#1E3324",
-  roseDeep: "#F28FB1",
+  lilacLine: "#3D2A5C",
+  ink: "#F3ECE0",
+  inkSoft: "#B3A3C9",
+  card: "#1E1436",
+  parchment: "#0F0820",
+  sage: "#5FE0A0",
+  sageBg: "#173325",
+  roseDeep: "#FF6FA8",
   roseBg: "#3A1B28",
   amberBg: "#3A2E14",
-  amberText: "#E8CC7A",
+  amberText: "#F2C065",
 };
 function applyTheme(mode) {
   Object.assign(C, mode === "dark" ? DARK_THEME : LIGHT_THEME);
@@ -275,7 +298,7 @@ function Toast({ toast, onClose }) {
       }}
     >
       <div style={{
-        width: 32, height: 32, borderRadius: "50%", background: GRADIENT, flexShrink: 0,
+        width: 32, height: 32, borderRadius: "50%", background: gradient(), flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         <Bell size={14} color="#fff" />
@@ -315,7 +338,7 @@ function OnboardingTour({ profile }) {
         padding: "28px 24px calc(env(safe-area-inset-bottom, 0px) + 24px)", boxSizing: "border-box",
       }} className="dvbc-screen-enter">
         <div style={{
-          width: 56, height: 56, borderRadius: "50%", background: GRADIENT,
+          width: 56, height: 56, borderRadius: "50%", background: gradient(),
           display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16,
         }}>
           <slide.Icon size={24} color="#fff" />
@@ -338,7 +361,7 @@ function OnboardingTour({ profile }) {
           <button
             onClick={() => { haptic(8); isLast ? dismiss() : setStep((s) => s + 1); }}
             className="dvbc-tap"
-            style={{ flex: 1, background: GRADIENT, border: "none", color: "#fff", fontWeight: 700, fontSize: 13, padding: "12px 0", borderRadius: 12, cursor: "pointer" }}
+            style={{ flex: 1, background: gradient(), border: "none", color: "#fff", fontWeight: 700, fontSize: 13, padding: "12px 0", borderRadius: 12, cursor: "pointer" }}
           >
             {isLast ? "Get Started" : "Next"}
           </button>
@@ -692,7 +715,7 @@ function Chip({ active, children, onClick }) {
       style={{
         padding: "8px 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
         border: `1px solid ${active ? C.garnet : C.lilacLine}`,
-        background: active ? GRADIENT : "#fff",
+        background: active ? gradient() : "#fff",
         color: active ? "#fff" : C.inkSoft,
         whiteSpace: "nowrap", flexShrink: 0, cursor: "pointer",
       }}
@@ -758,7 +781,7 @@ function LoginScreen({ onAuthed }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-      <div style={{ background: GRADIENT, padding: "calc(env(safe-area-inset-top, 0px) + 40px) 32px 30px", textAlign: "center", flexShrink: 0 }}>
+      <div style={{ background: gradient(), padding: "calc(env(safe-area-inset-top, 0px) + 40px) 32px 30px", textAlign: "center", flexShrink: 0 }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={{
             width: 84, height: 84, borderRadius: "50%", background: "#fff",
@@ -845,7 +868,7 @@ function LoginScreen({ onAuthed }) {
           <button
             type="submit" disabled={busy} className="dvbc-tap"
             style={{
-              width: "100%", background: GRADIENT, color: "#fff", fontWeight: 600, fontSize: 15,
+              width: "100%", background: gradient(), color: "#fff", fontWeight: 600, fontSize: 15,
               padding: 16, borderRadius: 14, border: "none", cursor: busy ? "default" : "pointer",
               opacity: busy ? 0.8 : 1, marginTop: mode === "signin" ? 20 : 4,
             }}
@@ -872,7 +895,7 @@ function LoginScreen({ onAuthed }) {
 function PendingApproval({ profile, onLogout }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-      <div style={{ background: GRADIENT, padding: "calc(env(safe-area-inset-top, 0px) + 40px) 32px 30px", textAlign: "center", flexShrink: 0 }}>
+      <div style={{ background: gradient(), padding: "calc(env(safe-area-inset-top, 0px) + 40px) 32px 30px", textAlign: "center", flexShrink: 0 }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={{
             width: 84, height: 84, borderRadius: "50%", background: "#fff",
@@ -1109,7 +1132,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         </div>
 
         {nextEvent ? (
-          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ display: "block", width: "100%", textAlign: "left", background: GRADIENT, borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative", border: "none", cursor: "pointer" }}>
+          <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ display: "block", width: "100%", textAlign: "left", background: gradient(), borderRadius: 20, padding: 20, marginTop: 16, color: "#fff", position: "relative", border: "none", cursor: "pointer" }}>
             <div style={{ position: "absolute", top: 18, right: 18, background: "rgba(255,255,255,0.16)", fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 999 }}>
               {phase === "ongoing" ? "Ongoing" : formatEventDay(nextEvent.start_time)}
             </div>
@@ -1139,7 +1162,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
             {checkInError && <div style={{ marginTop: 8, fontSize: 11, color: "#FBEAF1" }}>{checkInError}</div>}
           </button>
         ) : (
-          <div style={{ background: GRADIENT, borderRadius: 20, padding: 20, marginTop: 16, color: "#fff" }}>
+          <div style={{ background: gradient(), borderRadius: 20, padding: 20, marginTop: 16, color: "#fff" }}>
             <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 700, color: C.lilac, textTransform: "uppercase" }}>Next Event</div>
             <div style={{ fontFamily: "Lora, serif", fontSize: 17, marginTop: 8 }}>No upcoming events yet</div>
           </div>
@@ -1216,7 +1239,7 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
                 disabled={!draft.trim() || posting}
                 className="dvbc-tap"
                 style={{
-                  background: draft.trim() ? GRADIENT : C.lilacLine, color: "#fff", border: "none", borderRadius: 999,
+                  background: draft.trim() ? gradient() : C.lilacLine, color: "#fff", border: "none", borderRadius: 999,
                   padding: "8px 16px", fontSize: 12.5, fontWeight: 700, cursor: draft.trim() ? "pointer" : "default",
                 }}
               >
@@ -1355,7 +1378,7 @@ function EventFormPanel({ initial, onCancel, onSave }) {
         </button>
         <button
           onClick={submit} disabled={saving} className="dvbc-tap"
-          style={{ flex: 2, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
+          style={{ flex: 2, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
         >
           {saving ? "Saving…" : initial ? "Save Changes" : "Create Event"}
         </button>
@@ -1824,7 +1847,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
         <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
           <button
             onClick={() => { setEditingEvent(null); setShowEventForm(true); }} className="dvbc-tap"
-            style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
           >
             <Plus size={14} /> New Event
           </button>
@@ -1859,7 +1882,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
               style={{
                 flexShrink: 0, textAlign: "left", padding: "10px 14px", borderRadius: 14,
                 border: `1.4px solid ${active ? C.garnet : C.lilacLine}`,
-                background: active ? GRADIENT : "#fff", cursor: "pointer", minWidth: 150,
+                background: active ? gradient() : "#fff", cursor: "pointer", minWidth: 150,
               }}
             >
               <div style={{ fontSize: 12.5, fontWeight: 700, color: active ? "#fff" : C.ink }}>{e.title}</div>
@@ -2031,7 +2054,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                     <button
                       onClick={prefillRegisterFromPoll} disabled={prefillBusy} className="dvbc-tap"
                       style={{
-                        width: "100%", marginTop: 14, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5,
+                        width: "100%", marginTop: 14, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5,
                         padding: 12, borderRadius: 12, border: "none", cursor: prefillBusy ? "default" : "pointer", opacity: prefillBusy ? 0.8 : 1,
                       }}
                     >
@@ -2074,7 +2097,7 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
                       <button
                         onClick={() => onCheckIn(selectedEventId)} disabled={!checkInOpen || checkingIn} className="dvbc-tap"
                         style={{
-                          width: "100%", background: checkInOpen ? GRADIENT : C.lilacSoft, color: checkInOpen ? "#fff" : "#B8ADC0",
+                          width: "100%", background: checkInOpen ? gradient() : C.lilacSoft, color: checkInOpen ? "#fff" : "#B8ADC0",
                           fontWeight: 700, fontSize: 13.5, padding: 13, borderRadius: 12, border: "none",
                           cursor: checkInOpen && !checkingIn ? "pointer" : "default",
                         }}
@@ -2271,7 +2294,7 @@ function LibraryFormPanel({ initial, onCancel, onSave, onUploadAudio }) {
         </button>
         <button
           onClick={submit} disabled={saving} className="dvbc-tap"
-          style={{ flex: 2, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
+          style={{ flex: 2, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5, padding: 12, borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", opacity: saving ? 0.8 : 1 }}
         >
           {saving ? "Saving…" : initial ? "Save Changes" : "Add Song"}
         </button>
@@ -2362,7 +2385,7 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
         <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
           <button
             onClick={() => { setEditingPiece(null); setShowForm(true); }} className="dvbc-tap"
-            style={{ display: "flex", alignItems: "center", gap: 6, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer" }}
           >
             <Plus size={14} /> Add Song
           </button>
@@ -2456,7 +2479,7 @@ function Library({ favorites, toggleFavorite, isAdmin, pieces, loading, onCreate
                   onClick={() => togglePlay(p)} disabled={!p.audio_url} className="dvbc-tap"
                   style={{
                     width: 30, height: 30, borderRadius: "50%", border: "none", cursor: p.audio_url ? "pointer" : "default",
-                    background: p.audio_url ? GRADIENT : C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center",
+                    background: p.audio_url ? gradient() : C.lilacSoft, display: "flex", alignItems: "center", justifyContent: "center",
                   }}
                   title={p.audio_url ? (isPlaying ? "Pause" : "Play") : "No audio uploaded yet"}
                 >
@@ -2819,7 +2842,7 @@ function Messages({
           <button
             onClick={submitNewComment} disabled={!commentDraft.trim() || posting} className="dvbc-tap"
             style={{
-              background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
+              background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
               border: "none", cursor: commentDraft.trim() ? "pointer" : "default", opacity: commentDraft.trim() ? 1 : 0.5, flexShrink: 0,
             }}
           >
@@ -2880,7 +2903,7 @@ function Messages({
                   <div style={{
                     maxWidth: "78%", padding: m.message_type === "voice_note" ? "10px 12px" : "10px 14px",
                     borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                    background: mine ? GRADIENT : C.lilacSoft, color: mine ? "#fff" : C.ink, fontSize: 13.5, lineHeight: 1.5,
+                    background: mine ? gradient() : C.lilacSoft, color: mine ? "#fff" : C.ink, fontSize: 13.5, lineHeight: 1.5,
                   }}>
                     {isEditing ? (
                       <input
@@ -2997,7 +3020,7 @@ function Messages({
               <button
                 onClick={sendRecording} disabled={recState === "sending"} className="dvbc-tap"
                 style={{
-                  background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "10px 16px", borderRadius: 999,
+                  background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: "10px 16px", borderRadius: 999,
                   border: "none", cursor: "pointer", flexShrink: 0,
                 }}
               >
@@ -3018,7 +3041,7 @@ function Messages({
                 <button
                   onClick={submitChatMessage} disabled={sendingChat} className="dvbc-tap"
                   style={{
-                    background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
+                    background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: "11px 18px", borderRadius: 999,
                     border: "none", cursor: "pointer", flexShrink: 0,
                   }}
                 >
@@ -3119,7 +3142,7 @@ function Messages({
             <div style={{ fontFamily: "Lora, serif", fontSize: 16, color: C.ink }}>Chats</div>
             <button
               onClick={() => setNewChatOpen(true)} className="dvbc-tap"
-              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "7px 13px", borderRadius: 10, border: "none", cursor: "pointer" }}
+              style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "7px 13px", borderRadius: 10, border: "none", cursor: "pointer" }}
             >
               + New
             </button>
@@ -3138,7 +3161,7 @@ function Messages({
             }}
           >
             <div style={{
-              width: 36, height: 36, borderRadius: "50%", background: GRADIENT, color: "#fff",
+              width: 36, height: 36, borderRadius: "50%", background: gradient(), color: "#fff",
               display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
             }}>
               <Video size={17} />
@@ -3193,7 +3216,7 @@ function Messages({
           onClick={() => setComposerOpen(true)} className="dvbc-tap"
           style={{
             position: "fixed", bottom: 96, right: 24, width: 52, height: 52, borderRadius: "50%",
-            background: GRADIENT, border: "none", color: "#fff", fontSize: 26, fontWeight: 600,
+            background: gradient(), border: "none", color: "#fff", fontSize: 26, fontWeight: 600,
             display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
             boxShadow: "0 8px 20px rgba(76,46,158,0.35)",
           }}
@@ -3219,7 +3242,7 @@ function Messages({
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
                 onClick={submitNewPost} disabled={!draft.trim() || posting} className="dvbc-tap"
-                style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: draft.trim() ? "pointer" : "default", opacity: draft.trim() ? 1 : 0.6 }}
+                style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: draft.trim() ? "pointer" : "default", opacity: draft.trim() ? 1 : 0.6 }}
               >
                 {posting ? "Posting…" : "Post"}
               </button>
@@ -3278,7 +3301,7 @@ function Messages({
                     </div>
                     <div style={{ flex: 1, fontSize: 13, color: C.ink }}>{m.name}</div>
                     {isGroupMode ? (
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.6px solid ${selected ? C.garnet : C.lilacLine}`, background: selected ? GRADIENT : "transparent" }} />
+                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.6px solid ${selected ? C.garnet : C.lilacLine}`, background: selected ? gradient() : "transparent" }} />
                     ) : (
                       selected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.garnet }} />
                     )}
@@ -3295,7 +3318,7 @@ function Messages({
                   setNewChatOpen(false); setSelectedMemberIds([]); setGroupTitle(""); setIsGroupMode(false); setTab("chats");
                 }}
                 className="dvbc-tap"
-                style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: selectedMemberIds.length ? "pointer" : "default", opacity: selectedMemberIds.length ? 1 : 0.6 }}
+                style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 13, borderRadius: 12, border: "none", cursor: selectedMemberIds.length ? "pointer" : "default", opacity: selectedMemberIds.length ? 1 : 0.6 }}
               >
                 Start chat
               </button>
@@ -3447,7 +3470,7 @@ function Executives({ isAdmin }) {
             <button
               onClick={() => { setEditingExec(null); setExecForm({ name: "", role: "", bio: "", contact: "" }); setShowExecForm(true); }}
               className="dvbc-tap"
-              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+              style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
             >
               + Add
             </button>
@@ -3503,7 +3526,7 @@ function Executives({ isAdmin }) {
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <button onClick={saveExec} disabled={savingExec} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingExec ? "default" : "pointer", opacity: savingExec ? 0.8 : 1 }}>
+              <button onClick={saveExec} disabled={savingExec} className="dvbc-tap" style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingExec ? "default" : "pointer", opacity: savingExec ? 0.8 : 1 }}>
                 {savingExec ? "Saving…" : "Save"}
               </button>
               <button onClick={resetExecForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
@@ -3519,7 +3542,7 @@ function Executives({ isAdmin }) {
             <button
               onClick={() => { setEditingLeader(null); setLeaderForm({ name: "", voice_part: VOICE_PARTS[0] }); setShowLeaderForm(true); }}
               className="dvbc-tap"
-              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+              style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
             >
               + Add
             </button>
@@ -3570,7 +3593,7 @@ function Executives({ isAdmin }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <button onClick={saveLeader} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
+              <button onClick={saveLeader} className="dvbc-tap" style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
                 Save
               </button>
               <button onClick={resetLeaderForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
@@ -3760,7 +3783,7 @@ function OwnContactInfo({ profile, onSave }) {
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button
               onClick={save} disabled={busy} className="dvbc-tap"
-              style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 0", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer" }}
+              style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 0", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer" }}
             >
               {busy ? "Saving…" : "Save"}
             </button>
@@ -3837,7 +3860,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
 
   return (
     <div style={{ paddingBottom: 110 }}>
-      <div style={{ background: GRADIENT, padding: "calc(env(safe-area-inset-top, 0px) + 26px) 24px 34px", textAlign: "center" }}>
+      <div style={{ background: gradient(), padding: "calc(env(safe-area-inset-top, 0px) + 26px) 24px 34px", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
           <div style={{ position: "relative", display: "inline-block" }}>
             <div style={{
@@ -3899,7 +3922,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
         >
           Dark Mode
           <div style={{
-            width: 42, height: 24, borderRadius: 999, background: darkMode ? GRADIENT : C.lilacLine,
+            width: 42, height: 24, borderRadius: 999, background: darkMode ? gradient() : C.lilacLine,
             position: "relative", transition: "background 0.2s ease", flexShrink: 0,
           }}>
             <div style={{
@@ -3915,7 +3938,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
         >
           Sound Effects
           <div style={{
-            width: 42, height: 24, borderRadius: 999, background: soundEnabled ? GRADIENT : C.lilacLine,
+            width: 42, height: 24, borderRadius: 999, background: soundEnabled ? gradient() : C.lilacLine,
             position: "relative", transition: "background 0.2s ease", flexShrink: 0,
           }}>
             <div style={{
@@ -3943,7 +3966,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
               {pushBusy && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 1 }}>Updating…</div>}
             </div>
             <div style={{
-              width: 42, height: 24, borderRadius: 999, background: pushSubscribed ? GRADIENT : C.lilacLine,
+              width: 42, height: 24, borderRadius: 999, background: pushSubscribed ? gradient() : C.lilacLine,
               position: "relative", transition: "background 0.2s ease", flexShrink: 0, opacity: pushBusy ? 0.6 : 1,
             }}>
               <div style={{
@@ -3996,7 +4019,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
                     onClick={() => onApprove(m.id)} className="dvbc-tap"
-                    style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "9px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
+                    style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "9px 14px", borderRadius: 10, border: "none", cursor: "pointer" }}
                   >
                     Approve
                   </button>
@@ -4613,7 +4636,7 @@ function PracticeLists({ isAdmin, profile }) {
             <button
               onClick={() => { setEditingTrack(null); setTrackForm({ title: "", composer: "" }); setShowTrackForm(true); }}
               className="dvbc-tap"
-              style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
+              style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
             >
               + Add Track
             </button>
@@ -4636,7 +4659,7 @@ function PracticeLists({ isAdmin, profile }) {
                 key={t.id} onClick={() => { playTrack(t); setPlayerExpanded(true); }}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: `1px solid ${C.lilacLine}`, cursor: "pointer" }}
               >
-                <button onClick={(e) => { e.stopPropagation(); playTrack(t); }} className="dvbc-tap" style={{ width: 34, height: 34, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                <button onClick={(e) => { e.stopPropagation(); playTrack(t); }} className="dvbc-tap" style={{ width: 34, height: 34, borderRadius: "50%", background: gradient(), border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
                   {playing ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
                 </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -4704,7 +4727,7 @@ function PracticeLists({ isAdmin, profile }) {
                 </div>
               )}
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button onClick={saveTrack} disabled={savingTrack} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingTrack ? "default" : "pointer", opacity: savingTrack ? 0.8 : 1 }}>
+                <button onClick={saveTrack} disabled={savingTrack} className="dvbc-tap" style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingTrack ? "default" : "pointer", opacity: savingTrack ? 0.8 : 1 }}>
                   {savingTrack ? "Saving…" : "Save"}
                 </button>
                 <button onClick={resetTrackForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
@@ -4726,11 +4749,11 @@ function PracticeLists({ isAdmin, profile }) {
             <audio ref={audioRef} src={playableSrc || currentTrack.audio_url} autoPlay />
             <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.title}</div>
             <div onClick={(e) => { e.stopPropagation(); seekTo(e); }} style={{ height: 6, borderRadius: 999, background: C.lilacSoft, cursor: "pointer", position: "relative" }}>
-              <div style={{ height: "100%", borderRadius: 999, background: GRADIENT, width: `${duration ? (progress / duration) * 100 : 0}%` }} />
+              <div style={{ height: "100%", borderRadius: 999, background: gradient(), width: `${duration ? (progress / duration) * 100 : 0}%` }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
               <div style={{ fontSize: 10.5, color: C.inkSoft }}>{formatDuration(progress)} / {formatDuration(duration)}</div>
-              <button onClick={(e) => { e.stopPropagation(); playTrack(currentTrack); }} className="dvbc-tap" style={{ width: 30, height: 30, borderRadius: "50%", background: GRADIENT, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <button onClick={(e) => { e.stopPropagation(); playTrack(currentTrack); }} className="dvbc-tap" style={{ width: 30, height: 30, borderRadius: "50%", background: gradient(), border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 {isPlaying ? <Pause size={13} color="#fff" fill="#fff" /> : <Play size={13} color="#fff" fill="#fff" />}
               </button>
             </div>
@@ -4758,7 +4781,7 @@ function PracticeLists({ isAdmin, profile }) {
               key={list.id} onClick={() => setOpenListId(list.id)} className="dvbc-tap"
               style={{
                 width: 108, height: 108, borderRadius: 16, flexShrink: 0, border: "none", cursor: "pointer",
-                background: list.cover_url ? `url(${list.cover_url}) center/cover` : GRADIENT,
+                background: list.cover_url ? `url(${list.cover_url}) center/cover` : gradient(),
                 display: "flex", alignItems: "flex-end", padding: 10, position: "relative", overflow: "hidden",
               }}
             >
@@ -4799,7 +4822,7 @@ function PracticeLists({ isAdmin, profile }) {
           <button
             onClick={() => { setEditingList(null); setListContext("group"); setListForm({ title: "", voice_part: "All" }); setShowListForm(true); }}
             className="dvbc-tap"
-            style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
+            style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 14 }}
           >
             + Add Group List
           </button>
@@ -4817,7 +4840,7 @@ function PracticeLists({ isAdmin, profile }) {
               style={{
                 textAlign: "left", border: "none", cursor: "pointer", borderRadius: 16, overflow: "hidden",
                 height: 140, position: "relative",
-                background: list.cover_url ? `url(${list.cover_url}) center/cover` : GRADIENT,
+                background: list.cover_url ? `url(${list.cover_url}) center/cover` : gradient(),
               }}
             >
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(37,26,44,0.75) 0%, rgba(37,26,44,0.05) 55%, transparent 100%)" }} />
@@ -4867,7 +4890,7 @@ function PracticeLists({ isAdmin, profile }) {
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <button onClick={saveList} disabled={savingList} className="dvbc-tap" style={{ flex: 1, background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingList ? "default" : "pointer", opacity: savingList ? 0.8 : 1 }}>
+              <button onClick={saveList} disabled={savingList} className="dvbc-tap" style={{ flex: 1, background: gradient(), color: "#fff", fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: savingList ? "default" : "pointer", opacity: savingList ? 0.8 : 1 }}>
                 {savingList ? "Saving…" : "Save"}
               </button>
               <button onClick={resetListForm} className="dvbc-tap" style={{ flex: 1, background: C.lilacSoft, color: C.plum, fontWeight: 700, fontSize: 13, padding: 12, borderRadius: 12, border: "none", cursor: "pointer" }}>
@@ -4919,7 +4942,7 @@ function BottomNav({ screen, onNav }) {
             <div style={{
               width: active ? 52 : 34, height: 30, borderRadius: 15,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: active ? GRADIENT : "transparent",
+              background: active ? gradient() : "transparent",
               boxShadow: active ? "0 6px 14px rgba(76, 46, 158, 0.35)" : "none",
               transition: "all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)",
             }}>
@@ -4978,7 +5001,7 @@ class ErrorBoundary extends React.Component {
             {this.props.onGoHome && (
               <button
                 onClick={() => { this.setState({ hasError: false }); this.props.onGoHome(); }} className="dvbc-tap"
-                style={{ background: GRADIENT, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 18px", borderRadius: 12, border: "none", cursor: "pointer" }}
+                style={{ background: gradient(), color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "10px 18px", borderRadius: 12, border: "none", cursor: "pointer" }}
               >
                 Go to Home
               </button>
