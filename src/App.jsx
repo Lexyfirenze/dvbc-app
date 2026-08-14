@@ -2613,6 +2613,7 @@ function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
   onCreateConversation, onActivateSectionChat, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall, onEditChatMessage, onDeleteChatMessage,
+  openMemberPosting, onToggleOpenPosting,
 }) {
   const [tab, setTab] = useState("overview");
   const [openPostId, setOpenPostId] = useState(null);
@@ -3220,7 +3221,33 @@ function Messages({
 
       {tab === "posts" && (
         <div style={{ padding: "18px 24px 0" }}>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Leadership posts</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>
+            {openMemberPosting ? "Member posts" : "Leadership posts"}
+          </div>
+
+          {isAdmin && (
+            <button
+              onClick={onToggleOpenPosting} className="dvbc-tap"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+                background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 12, padding: "10px 12px",
+                marginBottom: 14, cursor: "pointer", textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 12, color: C.ink, fontWeight: 600 }}>
+                Members can post{openMemberPosting ? "" : " (currently admin-only)"}
+              </span>
+              <span style={{
+                width: 34, height: 20, borderRadius: 999, position: "relative", flexShrink: 0,
+                background: openMemberPosting ? gradient() : C.lilacLine, transition: "background 0.15s",
+              }}>
+                <span style={{
+                  position: "absolute", top: 2, left: openMemberPosting ? 16 : 2, width: 16, height: 16,
+                  borderRadius: "50%", background: "#fff", transition: "left 0.15s",
+                }} />
+              </span>
+            </button>
+          )}
 
           {loading && <BrandSpinner />}
           {!loading && posts.length === 0 && (
@@ -3386,7 +3413,7 @@ function Messages({
         </div>
       )}
 
-      {tab === "posts" && isAdmin && (
+      {tab === "posts" && (isAdmin || openMemberPosting) && (
         <button
           onClick={() => setComposerOpen(true)} className="dvbc-tap"
           style={{
@@ -3406,7 +3433,7 @@ function Messages({
           display: "flex", alignItems: "flex-end",
         }}>
           <div style={{ background: "#fff", width: "100%", borderRadius: "20px 20px 0 0", padding: "20px 24px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>New leadership post</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: C.ink, marginBottom: 12 }}>{isAdmin ? "New leadership post" : "New post"}</div>
             <textarea
               value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Share an update with the chorale…"
               style={{
@@ -5504,6 +5531,7 @@ export default function App() {
   const [avatarError, setAvatarError] = useState("");
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [openMemberPosting, setOpenMemberPosting] = useState(false);
   const [postSeenAt, setPostSeenAt] = useState(() => store.get("dvbc-post-seen", {}));
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -5627,6 +5655,27 @@ export default function App() {
     setPosts(data || []);
     setLoadingPosts(false);
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    supabase.from("app_settings").select("value").eq("key", "open_member_posting").maybeSingle()
+      .then(({ data }) => setOpenMemberPosting(!!data?.value));
+
+    const settingsChannel = supabase
+      .channel("app-settings-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload) => {
+        if (payload.new?.key === "open_member_posting") setOpenMemberPosting(!!payload.new.value);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(settingsChannel);
+  }, [session]);
+
+  const toggleOpenMemberPosting = useCallback(async () => {
+    const next = !openMemberPosting;
+    setOpenMemberPosting(next);
+    await supabase.from("app_settings").update({ value: next, updated_at: new Date().toISOString() }).eq("key", "open_member_posting");
+  }, [openMemberPosting]);
 
   useEffect(() => {
     if (!session) return;
@@ -6189,6 +6238,7 @@ export default function App() {
   );
   else if (screen === "messages") content = (
     <Messages posts={posts} loading={loadingPosts} isAdmin={isAdmin} profile={profile}
+      openMemberPosting={openMemberPosting} onToggleOpenPosting={toggleOpenMemberPosting}
       onBack={() => setScreen("dashboard")} onSubmitPost={submitPost} onSubmitComment={submitComment}
       seenMap={postSeenAt} onMarkSeen={markPostSeen} members={members} conversations={conversations}
       loadingConversations={loadingConversations} activeConversationId={activeConversationId}
