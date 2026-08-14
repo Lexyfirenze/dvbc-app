@@ -170,12 +170,17 @@ function Skeleton({ height = 14, width = "100%", radius = 8, style = {} }) {
   );
 }
 function BrandSpinner({ label = "Loading…" }) {
+  const bars = [0, 1, 2, 3, 4];
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0", gap: 10 }}>
-      <div className="dvbc-spin" style={{
-        width: 30, height: 30, borderRadius: "50%",
-        border: `3px solid ${C.lilacLine}`, borderTopColor: C.plum,
-      }} />
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 26 }}>
+        {bars.map((i) => (
+          <div key={i} className="dvbc-eq-bar" style={{
+            width: 4, borderRadius: 2, background: C.plum,
+            animationDelay: `${i * 0.11}s`,
+          }} />
+        ))}
+      </div>
       <div style={{ fontSize: 12.5, color: C.inkSoft }}>{label}</div>
     </div>
   );
@@ -1892,16 +1897,17 @@ function Attendance({ members, loading, onCycle, onSetStatus, onMarkUnmarkedPres
         {!loadingEvents && sortedEvents.length === 0 && (
           <div style={{ fontSize: 12, color: C.inkSoft }}>No events yet{isAdmin ? " — create one above." : "."}</div>
         )}
-        {sortedEvents.map((e) => {
+        {sortedEvents.map((e, i) => {
           const active = e.id === selectedEventId;
           const evPhase = getEventPhase(e);
           return (
             <button
-              key={e.id} onClick={() => { setSelectedEventId(e.id); setVotingError(""); setRosterError(""); setPrefillError(""); }} className="dvbc-tap"
+              key={e.id} onClick={() => { setSelectedEventId(e.id); setVotingError(""); setRosterError(""); setPrefillError(""); }} className="dvbc-tap dvbc-stagger"
               style={{
                 flexShrink: 0, textAlign: "left", padding: "10px 14px", borderRadius: 14,
                 border: `1.4px solid ${active ? C.garnet : C.lilacLine}`,
                 background: active ? gradient() : "#fff", cursor: "pointer", minWidth: 150,
+                animationDelay: `${Math.min(i, 8) * 45}ms`,
               }}
             >
               <div style={{ fontSize: 12.5, fontWeight: 700, color: active ? "#fff" : C.ink }}>{e.title}</div>
@@ -5950,6 +5956,18 @@ export default function App() {
     .dvbc-screen-enter { animation: dvbcFadeIn 0.2s ease; }
     @keyframes dvbcFadeIn {
       from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .dvbc-eq-bar { animation: dvbcEqualize 0.9s ease-in-out infinite; }
+    @keyframes dvbcEqualize {
+      0%, 100% { height: 6px; }
+      50% { height: 26px; }
+    }
+    /* Staggered entrance for list items: use with an inline animationDelay per index
+       so cards rise into place one after another, like an ascending musical scale. */
+    .dvbc-stagger { animation: dvbcStaggerUp 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) backwards; }
+    @keyframes dvbcStaggerUp {
+      from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
     }
   `;
