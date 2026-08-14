@@ -17,6 +17,7 @@ const C = {
   garnet: "#8A2332",
   garnetDark: "#5C1420",
   plum: "#C99A3E",
+  accent: "#8A2332",
   lilac: "#D9B98A",
   lilacSoft: "#F5E9D3",
   lilacLine: "#EAD9B8",
@@ -54,6 +55,7 @@ const LIGHT_THEME = {
   garnet: "#8A2332",
   garnetDark: "#5C1420",
   plum: "#C99A3E",
+  accent: "#8A2332",
   lilac: "#D9B98A",
   lilacSoft: "#F5E9D3",
   lilacLine: "#EAD9B8",
@@ -72,6 +74,7 @@ const DARK_THEME = {
   garnet: "#2A1750",
   garnetDark: "#140B26",
   plum: "#E24B9C",
+  accent: "#E24B9C",
   lilac: "#4A3C7A",
   lilacSoft: "#241A3D",
   lilacLine: "#3D2A5C",
@@ -908,8 +911,8 @@ function LoginScreen({ onAuthed }) {
           style={{ width: "100%", textAlign: "center", fontSize: 11.5, color: C.inkSoft, background: "none", border: "none", cursor: "pointer" }}
         >
           {mode === "signin"
-            ? <>New member? <span style={{ color: C.garnet, fontWeight: 700 }}>Register here</span></>
-            : <>Already registered? <span style={{ color: C.garnet, fontWeight: 700 }}>Sign in</span></>}
+            ? <>New member? <span style={{ color: C.accent, fontWeight: 700 }}>Register here</span></>
+            : <>Already registered? <span style={{ color: C.accent, fontWeight: 700 }}>Sign in</span></>}
         </button>
       </div>
     </div>
@@ -1202,12 +1205,12 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
         <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
           <button onClick={() => onNav("attendance")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
             <RingProgress value={attendancePct ?? 0} size={46} strokeWidth={5} color={C.garnet} track={C.lilacLine}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.accent }}>{attendancePct === null ? "—" : `${attendancePct}%`}</span>
             </RingProgress>
             <div style={{ fontSize: 11, color: C.inkSoft }}>Your<br />Attendance</div>
           </button>
           <button onClick={() => onNav("library")} className="dvbc-tap" style={{ flex: 1, textAlign: "left", background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, cursor: "pointer" }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 21, color: C.garnet }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 21, color: C.accent }}>
               {(pieces || []).filter((p) => p.is_ready).length}/{(pieces || []).length}
             </div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Pieces Ready</div>
@@ -2609,9 +2612,9 @@ function VoiceNoteBubble({ src, duration, mine }) {
 function Messages({
   posts, loading, isAdmin, profile, onBack, onSubmitPost, onSubmitComment, seenMap, onMarkSeen,
   members, conversations, loadingConversations, activeConversationId, onOpenConversation, onCloseConversation,
-  onCreateConversation, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall, onEditChatMessage, onDeleteChatMessage,
+  onCreateConversation, onActivateSectionChat, onSendChatMessage, onMarkConversationRead, onDeletePost, onSendVoiceNote, onStartCall, onEditChatMessage, onDeleteChatMessage,
 }) {
-  const [tab, setTab] = useState("posts");
+  const [tab, setTab] = useState("overview");
   const [openPostId, setOpenPostId] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -2628,6 +2631,7 @@ function Messages({
   const [editingContent, setEditingContent] = useState("");
   const [typingUsers, setTypingUsers] = useState({}); // { memberId: name }
   const [seenByOpen, setSeenByOpen] = useState(false);
+  const [activatingSection, setActivatingSection] = useState(null);
 
   const chatChannelRef = useRef(null);
   const typingStopTimer = useRef(null);
@@ -2913,7 +2917,7 @@ function Messages({
               onClick={() => onStartCall(activeConversation.id, otherMember.id, false)} className="dvbc-tap"
               style={{
                 width: 38, height: 38, borderRadius: "50%", border: "none", cursor: "pointer",
-                background: C.lilacSoft, color: C.garnet, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                background: C.lilacSoft, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
               }}
             >
               <Phone size={17} />
@@ -2959,7 +2963,7 @@ function Messages({
                               setEditingContent("");
                             }}
                             className="dvbc-tap"
-                            style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: "4px 8px", fontSize: 12, color: C.garnet, fontWeight: 600 }}
+                            style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: "4px 8px", fontSize: 12, color: C.accent, fontWeight: 600 }}
                           >
                             Save
                           </button>
@@ -3084,7 +3088,7 @@ function Messages({
                   onClick={startRecording} disabled={recState === "sending"} className="dvbc-tap"
                   style={{
                     width: 40, height: 40, borderRadius: "50%", border: "none", cursor: "pointer",
-                    background: C.lilacSoft, color: C.garnet, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    background: C.lilacSoft, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
                   }}
                 >
                   <Mic size={17} />
@@ -3108,9 +3112,111 @@ function Messages({
       <div style={{ margin: "14px 24px 0" }}><Staff /></div>
 
       <div style={{ display: "flex", gap: 8, padding: "16px 24px 0" }}>
-        <Chip active={tab === "posts"} onClick={() => setTab("posts")}>Posts</Chip>
+        <Chip active={tab === "overview"} onClick={() => setTab("overview")}>Overview</Chip>
+        <Chip active={tab === "posts"} onClick={() => setTab("posts")}>Member posts</Chip>
         <Chip active={tab === "chats"} onClick={() => setTab("chats")}>Chats</Chip>
       </div>
+
+      {tab === "overview" && (
+        <div style={{ padding: "18px 24px 0" }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, marginBottom: 10 }}>Recent chats</div>
+          {loadingConversations && <BrandSpinner />}
+          {!loadingConversations && (
+            <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 4 }}>
+              {[...conversations]
+                .sort((a, b) => new Date(lastMessageOf(b)?.created_at || b.created_at || 0) - new Date(lastMessageOf(a)?.created_at || a.created_at || 0))
+                .slice(0, 4)
+                .map((conv) => {
+                  const unread = unreadCountFor(conv);
+                  const title = conversationTitle(conv);
+                  const avatarUrl = conversationAvatarUrl(conv);
+                  return (
+                    <button
+                      key={conv.id} onClick={() => { setTab("chats"); onOpenConversation(conv.id); }} className="dvbc-tap"
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", flexShrink: 0, width: 66 }}
+                    >
+                      <div style={{ position: "relative" }}>
+                        <div style={{
+                          width: 54, height: 54, borderRadius: "50%", overflow: "hidden",
+                          background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                          fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 15, border: `1.5px solid ${C.lilacLine}`,
+                        }}>
+                          {avatarUrl
+                            ? <img src={avatarUrl} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            : conv.is_group ? <Users size={20} color={C.plum} /> : title.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                        </div>
+                        {unread > 0 && (
+                          <div style={{
+                            position: "absolute", top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 999, background: C.roseDeep,
+                            color: "#fff", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", border: `2px solid ${C.parchment}`,
+                          }}>
+                            {unread > 9 ? "9+" : unread}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: C.ink, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>
+                        {title.split(",")[0]}
+                      </div>
+                    </button>
+                  );
+                })}
+              <button
+                onClick={() => setTab("chats")} className="dvbc-tap"
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", flexShrink: 0, width: 66 }}
+              >
+                <div style={{
+                  width: 54, height: 54, borderRadius: "50%", background: gradient(), color: "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, textAlign: "center",
+                }}>
+                  See all
+                </div>
+              </button>
+            </div>
+          )}
+
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: C.ink, margin: "22px 0 10px" }}>Highlighted content</div>
+          {loading && <BrandSpinner />}
+          {!loading && posts.length === 0 && (
+            <div style={{ fontSize: 12.5, color: C.inkSoft, padding: "10px 0" }}>No posts yet.</div>
+          )}
+          {posts.slice(0, 2).map((post) => {
+            const commentCount = (post.comments || []).length;
+            const authorName = post.author?.id === profile?.id ? "you" : (post.author?.name || "Unknown");
+            return (
+              <button
+                key={post.id} onClick={() => openPost(post)} className="dvbc-tap"
+                style={{
+                  width: "100%", textAlign: "left", display: "flex", gap: 12, padding: 14,
+                  background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, marginBottom: 12, cursor: "pointer",
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+                  background: C.lilacSoft, color: C.plum, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 14,
+                }}>
+                  {post.author?.avatar_url
+                    ? <img src={post.author.avatar_url} alt={post.author.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : (post.author?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: C.inkSoft }}>{timeAgo(post.created_at)}</div>
+                  <div style={{
+                    fontSize: 13, color: C.ink, marginTop: 4, lineHeight: 1.5,
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                  }}>
+                    {post.content}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: C.inkSoft }}>Sent by {authorName}</div>
+                    <div style={{ fontSize: 11, color: C.inkSoft }}>{commentCount} comment{commentCount === 1 ? "" : "s"}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {tab === "posts" && (
         <div style={{ padding: "18px 24px 0" }}>
@@ -3203,6 +3309,43 @@ function Messages({
               <div style={{ fontSize: 10.5, color: C.inkSoft }}>Join the group video room</div>
             </div>
           </button>
+
+          {isAdmin && (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, color: C.ink, marginBottom: 8 }}>Section chats</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {["Soprano", "Alto", "Tenor", "Bass", "Conductor"].map((section) => {
+                  const existing = conversations.find((c) => c.section === section);
+                  const busy = activatingSection === section;
+                  return existing ? (
+                    <button
+                      key={section} onClick={() => { setTab("chats"); onOpenConversation(existing.id); }} className="dvbc-tap"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999,
+                        background: C.sageBg, border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: 600, color: C.sage,
+                      }}
+                    >
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.sage }} />
+                      {section === "Conductor" ? "Conductors" : `${section}s`} active
+                    </button>
+                  ) : (
+                    <button
+                      key={section}
+                      disabled={busy}
+                      onClick={async () => { setActivatingSection(section); haptic(8); await onActivateSectionChat(section); setActivatingSection(null); }}
+                      className="dvbc-tap"
+                      style={{
+                        padding: "8px 13px", borderRadius: 999, background: C.lilacSoft, border: `1px solid ${C.lilacLine}`,
+                        cursor: busy ? "default" : "pointer", fontSize: 11.5, fontWeight: 600, color: C.ink, opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      {busy ? "Activating…" : `Activate ${section === "Conductor" ? "Conductors" : section + "s"}`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {conversations.map((conv) => {
             const unread = unreadCountFor(conv);
@@ -3527,7 +3670,7 @@ function Executives({ isAdmin }) {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{exec.name}</div>
-              <div style={{ fontSize: 11.5, color: C.garnet, fontWeight: 600, marginTop: 1 }}>{exec.role}</div>
+              <div style={{ fontSize: 11.5, color: C.accent, fontWeight: 600, marginTop: 1 }}>{exec.role}</div>
               {exec.bio && <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 5, lineHeight: 1.5 }}>{exec.bio}</div>}
               {exec.contact && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>{exec.contact}</div>}
               {isAdmin && (
@@ -3714,12 +3857,12 @@ function MemberProfileModal({ member, onClose }) {
 
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
           <div style={{ flex: 1, background: C.lilacSoft, borderRadius: 14, padding: 14, textAlign: "center" }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.garnet }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: C.accent }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
             <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>Attendance</div>
           </div>
           {birthday && (
             <div style={{ flex: 1, background: C.lilacSoft, borderRadius: 14, padding: 14, textAlign: "center" }}>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.garnet }}>{birthday}</div>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.accent }}>{birthday}</div>
               <div style={{ fontSize: 9.5, color: C.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>Birthday</div>
             </div>
           )}
@@ -3898,7 +4041,7 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
             <div style={{
               width: 72, height: 72, borderRadius: "50%", background: "#fff", margin: "0 auto 12px",
               display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-              fontFamily: "'Playfair Display', serif", fontStyle: "italic", fontWeight: 600, fontSize: 24, color: C.garnet,
+              fontFamily: "'Playfair Display', serif", fontStyle: "italic", fontWeight: 600, fontSize: 24, color: C.accent,
               border: `3px solid ${C.lilac}`,
             }}>
               {profile?.avatar_url
@@ -3932,16 +4075,16 @@ function Profile({ profile, members, onLogout, isAdmin, onApprove, onReject, onR
       <div style={{ padding: "20px 24px" }}>
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.garnet }}>{members.length}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.accent }}>{members.length}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Registered members</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center" }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.garnet }}>{presentNow === null ? "—" : presentNow}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.accent }}>{presentNow === null ? "—" : presentNow}</div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Present, next event</div>
           </div>
           <div style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <RingProgress value={attendancePct ?? 0} size={36} strokeWidth={4} color={C.garnet} track={C.lilacLine} />
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, color: C.garnet, marginTop: -4 }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
+            <RingProgress value={attendancePct ?? 0} size={36} strokeWidth={4} color={C.accent} track={C.lilacLine} />
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, color: C.accent, marginTop: -4 }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div>
             <div style={{ fontSize: 11, color: C.inkSoft }}>My attendance</div>
           </div>
         </div>
@@ -5691,7 +5834,16 @@ export default function App() {
 
     await loadConversations();
     setActiveConversationId(conv.id);
-  }, [profile, conversations, loadConversations]);  const sendChatMessage = useCallback(async (conversationId, content) => {
+  }, [profile, conversations, loadConversations]);
+
+  const activateSectionChat = useCallback(async (section) => {
+    const { data, error } = await supabase.rpc("activate_section_chat", { p_section: section });
+    if (error) { console.error(error); return; }
+    await loadConversations();
+    return data;
+  }, [loadConversations]);
+
+  const sendChatMessage = useCallback(async (conversationId, content) => {
     if (!profile) return;
     await supabase.from("chat_messages").insert({ conversation_id: conversationId, sender_id: profile.id, content });
     await supabase
@@ -6041,7 +6193,7 @@ export default function App() {
       seenMap={postSeenAt} onMarkSeen={markPostSeen} members={members} conversations={conversations}
       loadingConversations={loadingConversations} activeConversationId={activeConversationId}
       onOpenConversation={openConversation} onCloseConversation={closeConversation}
-      onCreateConversation={createConversation} onSendChatMessage={sendChatMessage}
+      onCreateConversation={createConversation} onActivateSectionChat={activateSectionChat} onSendChatMessage={sendChatMessage}
       onMarkConversationRead={markConversationRead} onDeletePost={deletePost} onSendVoiceNote={sendVoiceNote}
       onStartCall={startCall} onEditChatMessage={editChatMessage} onDeleteChatMessage={deleteChatMessage} />
   );
