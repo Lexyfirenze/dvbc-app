@@ -6121,6 +6121,17 @@ function Keyboard() {
   const midiRange = [];
   for (let m = LOW_MIDI; m <= HIGH_MIDI; m++) midiRange.push(m);
   const whiteKeys = midiRange.filter((m) => !kbMidiToName(m).isSharp);
+  const octaveMarkers = midiRange.filter((m) => m % 12 === 0); // every C
+
+  const scrollToMidi = (midi, whiteW) => {
+    if (!scrollRef.current) return;
+    const idx = whiteKeys.indexOf(midi);
+    if (idx < 0) return;
+    scrollRef.current.scrollTo({ left: Math.max(0, idx * whiteW - 16), behavior: "smooth" });
+  };
+  const scrollByOctave = (dir, whiteW) => {
+    scrollRef.current?.scrollBy({ left: dir * whiteW * 7, behavior: "smooth" });
+  };
 
   const startNote = useCallback((midi) => {
     const ctx = getSharedAudioCtx();
@@ -6177,6 +6188,36 @@ function Keyboard() {
       <Repeat size={13} /> Sustain {sustain ? "On" : "Off"}
     </button>
   );
+
+  // Scroll arrows + tap-to-jump octave chips — dragging across the keys themselves doesn't
+  // scroll (each key captures the touch to play its note), so this is the actual way to navigate.
+  const scrollControls = (whiteW, compact) => {
+    const arrowStyle = {
+      flexShrink: 0, width: 30, height: 30, borderRadius: "50%", border: "none", cursor: "pointer",
+      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700,
+      background: compact ? "rgba(255,255,255,0.1)" : gradient(),
+      color: "#fff",
+    };
+    const chipStyle = (active) => ({
+      flexShrink: 0, border: "none", cursor: "pointer", borderRadius: 8, padding: "5px 9px",
+      fontSize: 10.5, fontWeight: 700,
+      background: active ? C.garnet : (compact ? "rgba(255,255,255,0.1)" : C.lilacSoft),
+      color: active ? "#fff" : (compact ? "rgba(255,255,255,0.75)" : C.plum),
+    });
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <button onClick={() => scrollByOctave(-1, whiteW)} className="dvbc-tap" style={arrowStyle} aria-label="Scroll left">‹</button>
+        <div style={{ display: "flex", gap: 4, overflowX: "auto", flex: 1, WebkitOverflowScrolling: "touch" }}>
+          {octaveMarkers.map((m) => (
+            <button key={m} onClick={() => scrollToMidi(m, whiteW)} className="dvbc-tap" style={chipStyle(false)}>
+              {kbMidiToName(m).label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => scrollByOctave(1, whiteW)} className="dvbc-tap" style={arrowStyle} aria-label="Scroll right">›</button>
+      </div>
+    );
+  };
 
   // Renders the white+black key grid at a given size. Used both for the inline card and the fullscreen landscape view.
   const renderKeys = (whiteW, whiteH, blackW, blackH, scrollable) => {
@@ -6273,8 +6314,13 @@ function Keyboard() {
             <X size={16} color="#fff" />
           </button>
         </div>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: needsScroll ? "flex-start" : "center", overflowX: needsScroll ? "auto" : "hidden", WebkitOverflowScrolling: "touch", padding: "0 12px" }}>
-          {renderKeys(whiteW, whiteH, blackW, blackH, false)}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 12px", minHeight: 0 }}>
+          {scrollControls(whiteW, true)}
+          <div ref={scrollRef} style={{ overflowX: needsScroll ? "auto" : "hidden", WebkitOverflowScrolling: "touch" }}>
+            <div style={{ display: "flex", justifyContent: needsScroll ? "flex-start" : "center" }}>
+              {renderKeys(whiteW, whiteH, blackW, blackH, false)}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -6302,6 +6348,7 @@ function Keyboard() {
         <div style={{ fontSize: 10.5, color: C.inkSoft }}>A0 – C8 · full 88 keys, scroll to reach them all</div>
       </div>
 
+      {scrollControls(42, false)}
       {renderKeys(42, 168, 26, 104, true)}
     </div>
   );
