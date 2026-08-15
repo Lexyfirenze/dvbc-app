@@ -8,7 +8,7 @@ import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
 import photoImg3 from "./assets/chorale-photo-3.jpg";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./supabaseClient";import StaffRenderer from "./components/StaffRenderer";
 import { generateICS, downloadICS } from './utils/dvbc-ics-export.js';
 
 /* ---------- Design tokens: "Sunday Performance" warm concert-hall palette ---------- */
