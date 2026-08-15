@@ -8,7 +8,7 @@ import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
 import photoImg3 from "./assets/chorale-photo-3.jpg";
-import { supabase } from "./supabaseClient";import StaffRenderer from "./components/StaffRenderer";import NotationFlashcards from "./components/NotationFlashcards";
+import { supabase } from "./supabaseClient";import StaffRenderer from "./components/StaffRenderer";import NotationFlashcards from "./components/NotationFlashcards";import RhythmGame from "./components/RhythmGame";
 import { generateICS, downloadICS } from './utils/dvbc-ics-export.js';
 
 /* ---------- Design tokens: "Sunday Performance" warm concert-hall palette ---------- */
@@ -5489,7 +5489,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
       <TopHeader title="Practice Lists" subtitle="Personal & group playlists" />
 
       <div style={{ padding: "16px 24px 0", display: "flex", gap: 8 }}>
-        {[["lists", "Lists"], ["assignments", "Assignments"], ["solfege", "Solfège"], ["tools", "Keyboard"]].map(([key, label]) => (
+        {[["lists", "Lists"], ["assignments", "Assignments"], ["solfege", "Solfège"], ["rhythm", "Rhythm"], ["tools", "Keyboard"]].map(([key, label]) => (
           <button
             key={key} onClick={() => setView(key)} className="dvbc-tap"
             style={{
@@ -5925,6 +5925,8 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
           })}
         </div>
       )}
+
+      {view === "rhythm" && <RhythmGame onBack={() => setView("lists")} />}
 
       {view === "tools" && <PracticeTools />}
     </div>
