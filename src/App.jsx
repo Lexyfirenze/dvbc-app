@@ -8,7 +8,7 @@ import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
 import photoImg2 from "./assets/chorale-photo-2.jpg";
 import photoImg3 from "./assets/chorale-photo-3.jpg";
-import { supabase } from "./supabaseClient";import StaffRenderer from "./components/StaffRenderer";
+import { supabase } from "./supabaseClient";import StaffRenderer from "./components/StaffRenderer";import NotationFlashcards from "./components/NotationFlashcards";
 import { generateICS, downloadICS } from './utils/dvbc-ics-export.js';
 
 /* ---------- Design tokens: "Sunday Performance" warm concert-hall palette ---------- */
@@ -1366,7 +1366,10 @@ function Dashboard({ profile, members, events, posts, pieces, isAdmin, onSubmitP
               {(pieces || []).filter((p) => p.is_ready).length}/{(pieces || []).length}
             </div>
             <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Pieces Ready</div>
-          </button>
+          </button><button onClick={() => onNav("notation")} className="dvbc-tap" style={{ flex: 1, background: C.card, border: `1px solid ${C.lilacLine}`, borderRadius: 16, padding: 14, textAlign: "center", cursor: "pointer" }}>
+  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 21, color: C.garnet }}>♪</div>
+  <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 2 }}>Notation Trainer</div>
+</button>
         </div>
 
         <UpcomingBirthdays members={members} />
@@ -7690,6 +7693,7 @@ export default function App() {
     />
   );
   else if (screen === "practice") content = <PracticeLists isAdmin={isAdmin} profile={profile} members={members} />;
+else if (screen === "notation") content = <NotationFlashcards onBack={() => setScreen("dashboard")} />;
   else if (screen === "privacy") content = <StaticPage title="Privacy Policy" content={PRIVACY_POLICY_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "about") content = <StaticPage title="About Us" content={ABOUT_TEXT} onBack={() => setScreen("profile")} />;
   else if (screen === "profile") content = (
