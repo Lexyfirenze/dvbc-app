@@ -5950,6 +5950,8 @@ const KB_TIMBRES = [
   { key: "piano", label: "Piano" },
   { key: "organ", label: "Organ" },
   { key: "choir", label: "Choir" },
+  { key: "strings", label: "Strings" },
+  { key: "synth", label: "Synth" },
 ];
 
 // Reuses the app's shared AudioContext singleton (see playChime above) so the keyboard,
@@ -6005,6 +6007,39 @@ function kbPlayVoice(ctx, freq, timbre) {
     vibrato.start(now);
     nodes.push(osc, vibrato);
     master.gain.linearRampToValueAtTime(0.45, now + 0.35);
+  } else if (timbre === "strings") {
+    // Ensemble strings: three detuned sawtooths through a lowpass filter, slow bowed attack.
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = freq * 4;
+    filter.Q.value = 0.4;
+    filter.connect(master);
+    [0.994, 1, 1.006].forEach((detune) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = freq * detune;
+      const g = ctx.createGain();
+      g.gain.value = 0.3;
+      osc.connect(g);
+      g.connect(filter);
+      osc.start(now);
+      nodes.push(osc);
+    });
+    master.gain.linearRampToValueAtTime(0.42, now + 0.18);
+  } else if (timbre === "synth") {
+    // Punchy lead synth: square wave, fast attack, flat sustain.
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = freq;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = freq * 6;
+    filter.Q.value = 1;
+    osc.connect(filter);
+    filter.connect(master);
+    osc.start(now);
+    nodes.push(osc);
+    master.gain.linearRampToValueAtTime(0.35, now + 0.01);
   } else {
     // Piano: bright quick attack, exponential decay toward a lower sustain, two detuned oscillators.
     [1, 1.003].forEach((detune) => {
@@ -6025,7 +6060,7 @@ function kbPlayVoice(ctx, freq, timbre) {
   return {
     stop() {
       const t = ctx.currentTime;
-      const release = timbre === "choir" ? 0.35 : timbre === "organ" ? 0.12 : 0.25;
+      const release = timbre === "choir" ? 0.35 : timbre === "strings" ? 0.3 : timbre === "organ" ? 0.12 : timbre === "synth" ? 0.08 : 0.25;
       master.gain.cancelScheduledValues(t);
       master.gain.setValueAtTime(master.gain.value, t);
       master.gain.linearRampToValueAtTime(0, t + release);
@@ -6040,14 +6075,52 @@ function Keyboard() {
   const [activeNotes, setActiveNotes] = useState({});
   const voicesRef = useRef({});
   const scrollRef = useRef(null);
+  const containerRef = useRef(null);
 
-  const LOW_MIDI = 36;  // C2
-  const HIGH_MIDI = 84; // C6 -> 4 octaves
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const getIsPortrait = () => (typeof window !== "undefined" ? window.innerHeight > window.innerWidth : true);
+  const [isPortrait, setIsPortrait] = useState(getIsPortrait());
+  const [dims, setDims] = useState({ w: typeof window !== "undefined" ? window.innerWidth : 360, h: typeof window !== "undefined" ? window.innerHeight : 640 });
+
+  useEffect(() => {
+    const onResize = () => {
+      setIsPortrait(getIsPortrait());
+      setDims({ w: window.innerWidth, h: window.innerHeight });
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onFsChange = () => { if (!document.fullscreenElement) setFullscreenActive(false); };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const enterLandscape = async () => {
+    try { await containerRef.current?.requestFullscreen?.(); } catch (e) {}
+    try { await window.screen?.orientation?.lock?.("landscape"); } catch (e) {}
+    setDims({ w: window.innerWidth, h: window.innerHeight });
+    setIsPortrait(getIsPortrait());
+    setFullscreenActive(true);
+  };
+
+  const exitLandscape = () => {
+    try { window.screen?.orientation?.unlock?.(); } catch (e) {}
+    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+    setFullscreenActive(false);
+  };
+
+  const LOW_MIDI = 21;  // A0
+  const HIGH_MIDI = 108; // C8 -> full 88-key piano range
 
   const midiRange = [];
   for (let m = LOW_MIDI; m <= HIGH_MIDI; m++) midiRange.push(m);
   const whiteKeys = midiRange.filter((m) => !kbMidiToName(m).isSharp);
-  const WHITE_W = 42, WHITE_H = 168, BLACK_W = 26, BLACK_H = 104;
 
   const startNote = useCallback((midi) => {
     const ctx = getSharedAudioCtx();
@@ -6071,96 +6144,165 @@ function Keyboard() {
 
   useEffect(() => () => releaseAllSustained(), []);
 
-  const blackOffset = (midi) => {
-    const precedingWhiteCount = whiteKeys.filter((w) => w < midi).length;
-    return precedingWhiteCount * WHITE_W - BLACK_W / 2;
-  };
-
-  return (
-    <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink }}>Keyboard</div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {KB_TIMBRES.map((t) => (
-            <button
-              key={t.key} onClick={() => setTimbre(t.key)} className="dvbc-tap"
-              style={{
-                border: `1.4px solid ${timbre === t.key ? C.garnet : C.lilacLine}`,
-                background: timbre === t.key ? gradient() : "#fff",
-                color: timbre === t.key ? "#fff" : C.inkSoft,
-                fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 20, cursor: "pointer",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+  const timbreRow = (compact) => (
+    <div style={{ display: "flex", gap: 6 }}>
+      {KB_TIMBRES.map((t) => (
         <button
-          onClick={() => { const next = !sustain; setSustain(next); if (!next) releaseAllSustained(); }}
-          className="dvbc-tap"
+          key={t.key} onClick={() => setTimbre(t.key)} className="dvbc-tap"
           style={{
-            display: "flex", alignItems: "center", gap: 6,
-            border: `1.4px solid ${sustain ? C.garnet : C.lilacLine}`,
-            background: sustain ? C.roseBg : "#fff",
-            color: sustain ? C.roseDeep : C.inkSoft,
-            fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 20, cursor: "pointer",
+            border: `1.4px solid ${timbre === t.key ? C.garnet : (compact ? "rgba(255,255,255,0.3)" : C.lilacLine)}`,
+            background: timbre === t.key ? gradient() : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
+            color: timbre === t.key ? "#fff" : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 20, cursor: "pointer",
           }}
         >
-          <Repeat size={13} /> Sustain {sustain ? "On" : "Off"}
+          {t.label}
         </button>
-        <div style={{ fontSize: 10.5, color: C.inkSoft }}>C2 – C6 · scroll for more keys</div>
-      </div>
+      ))}
+    </div>
+  );
 
+  const sustainButton = (compact) => (
+    <button
+      onClick={() => { const next = !sustain; setSustain(next); if (!next) releaseAllSustained(); }}
+      className="dvbc-tap"
+      style={{
+        display: "flex", alignItems: "center", gap: 6,
+        border: `1.4px solid ${sustain ? C.garnet : (compact ? "rgba(255,255,255,0.3)" : C.lilacLine)}`,
+        background: sustain ? C.roseBg : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
+        color: sustain ? C.roseDeep : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
+        fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 20, cursor: "pointer",
+      }}
+    >
+      <Repeat size={13} /> Sustain {sustain ? "On" : "Off"}
+    </button>
+  );
+
+  // Renders the white+black key grid at a given size. Used both for the inline card and the fullscreen landscape view.
+  const renderKeys = (whiteW, whiteH, blackW, blackH, scrollable) => {
+    const blackOffset = (midi) => {
+      const precedingWhiteCount = whiteKeys.filter((w) => w < midi).length;
+      return precedingWhiteCount * whiteW - blackW / 2;
+    };
+    const content = (
+      <div style={{ position: "relative", height: whiteH, width: whiteKeys.length * whiteW, touchAction: "none" }}>
+        {whiteKeys.map((midi, i) => {
+          const active = !!activeNotes[midi];
+          const isC = kbMidiToName(midi).name === "C";
+          return (
+            <div
+              key={midi}
+              onMouseDown={() => startNote(midi)}
+              onMouseUp={() => stopNote(midi)}
+              onMouseLeave={() => stopNote(midi)}
+              onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
+              onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
+              style={{
+                position: "absolute", left: i * whiteW, top: 0, width: whiteW - 2, height: whiteH,
+                background: active ? C.lilacSoft : "#fff",
+                border: `1px solid ${C.lilacLine}`, borderRadius: "0 0 6px 6px",
+                display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 8,
+                boxShadow: active ? "inset 0 4px 10px rgba(138,35,50,0.18)" : "0 2px 4px rgba(0,0,0,0.06)",
+                cursor: "pointer", userSelect: "none",
+              }}
+            >
+              {isC && <span style={{ fontSize: 9.5, color: C.inkSoft, fontWeight: 700 }}>{kbMidiToName(midi).label}</span>}
+            </div>
+          );
+        })}
+        {midiRange.filter((m) => kbMidiToName(m).isSharp).map((midi) => {
+          const active = !!activeNotes[midi];
+          return (
+            <div
+              key={midi}
+              onMouseDown={() => startNote(midi)}
+              onMouseUp={() => stopNote(midi)}
+              onMouseLeave={() => stopNote(midi)}
+              onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
+              onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
+              style={{
+                position: "absolute", left: blackOffset(midi), top: 0, width: blackW, height: blackH, zIndex: 2,
+                background: active ? C.garnet : "#231A1D",
+                borderRadius: "0 0 4px 4px", cursor: "pointer", userSelect: "none",
+                boxShadow: active ? "inset 0 3px 8px rgba(0,0,0,0.4)" : "0 3px 6px rgba(0,0,0,0.35)",
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+    if (!scrollable) return content;
+    return (
       <div ref={scrollRef} style={{ overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
-        <div style={{ position: "relative", height: WHITE_H, width: whiteKeys.length * WHITE_W, touchAction: "none" }}>
-          {whiteKeys.map((midi, i) => {
-            const active = !!activeNotes[midi];
-            const isC = kbMidiToName(midi).name === "C";
-            return (
-              <div
-                key={midi}
-                onMouseDown={() => startNote(midi)}
-                onMouseUp={() => stopNote(midi)}
-                onMouseLeave={() => stopNote(midi)}
-                onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
-                onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
-                style={{
-                  position: "absolute", left: i * WHITE_W, top: 0, width: WHITE_W - 2, height: WHITE_H,
-                  background: active ? C.lilacSoft : "#fff",
-                  border: `1px solid ${C.lilacLine}`, borderRadius: "0 0 6px 6px",
-                  display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 8,
-                  boxShadow: active ? "inset 0 4px 10px rgba(138,35,50,0.18)" : "0 2px 4px rgba(0,0,0,0.04)",
-                  cursor: "pointer", userSelect: "none",
-                }}
-              >
-                {isC && <span style={{ fontSize: 9.5, color: C.inkSoft, fontWeight: 700 }}>{kbMidiToName(midi).label}</span>}
-              </div>
-            );
-          })}
-          {midiRange.filter((m) => kbMidiToName(m).isSharp).map((midi) => {
-            const active = !!activeNotes[midi];
-            return (
-              <div
-                key={midi}
-                onMouseDown={() => startNote(midi)}
-                onMouseUp={() => stopNote(midi)}
-                onMouseLeave={() => stopNote(midi)}
-                onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
-                onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
-                style={{
-                  position: "absolute", left: blackOffset(midi), top: 0, width: BLACK_W, height: BLACK_H, zIndex: 2,
-                  background: active ? C.garnet : "#231A1D",
-                  borderRadius: "0 0 4px 4px", cursor: "pointer", userSelect: "none",
-                  boxShadow: active ? "inset 0 3px 8px rgba(0,0,0,0.4)" : "0 3px 6px rgba(0,0,0,0.35)",
-                }}
-              />
-            );
-          })}
+        {content}
+      </div>
+    );
+  };
+
+  // ---------- Fullscreen landscape view ----------
+  if (fullscreenActive) {
+    if (isPortrait) {
+      return (
+        <div ref={containerRef} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#1A1219", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 24 }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(90deg)" }}>
+            <RotateCw size={30} color="#fff" />
+          </div>
+          <div style={{ color: "#fff", fontSize: 15, fontWeight: 700, textAlign: "center" }}>Rotate your device</div>
+          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12.5, textAlign: "center", maxWidth: 260 }}>Turn your phone sideways to play the full-width keyboard.</div>
+          <button onClick={exitLandscape} className="dvbc-tap" style={{ marginTop: 8, border: "1.4px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 12.5, fontWeight: 700, padding: "8px 16px", borderRadius: 20, cursor: "pointer" }}>
+            Exit
+          </button>
+        </div>
+      );
+    }
+    const availW = dims.w - 24;
+    const whiteW = Math.max(30, Math.min(56, availW / whiteKeys.length));
+    const whiteH = Math.min(dims.h - 96, 240);
+    const blackW = whiteW * 0.6;
+    const blackH = whiteH * 0.62;
+    const boardWidth = whiteKeys.length * whiteW;
+    const needsScroll = boardWidth > availW;
+    return (
+      <div ref={containerRef} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#1A1219", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {timbreRow(true)}
+            {sustainButton(true)}
+          </div>
+          <button onClick={exitLandscape} className="dvbc-tap" style={{ width: 32, height: 32, borderRadius: "50%", border: "1.4px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <X size={16} color="#fff" />
+          </button>
+        </div>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: needsScroll ? "flex-start" : "center", overflowX: needsScroll ? "auto" : "hidden", WebkitOverflowScrolling: "touch", padding: "0 12px" }}>
+          {renderKeys(whiteW, whiteH, blackW, blackH, false)}
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink }}>Keyboard</div>
+        {timbreRow(false)}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        {sustainButton(false)}
+        <button
+          onClick={enterLandscape}
+          className="dvbc-tap"
+          style={{
+            display: "flex", alignItems: "center", gap: 6, border: "1.4px solid transparent",
+            background: gradient(), color: "#fff", fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 20, cursor: "pointer",
+          }}
+        >
+          <RotateCw size={13} /> Landscape
+        </button>
+        <div style={{ fontSize: 10.5, color: C.inkSoft }}>A0 – C8 · full 88 keys, scroll to reach them all</div>
+      </div>
+
+      {renderKeys(42, 168, 26, 104, true)}
     </div>
   );
 }
