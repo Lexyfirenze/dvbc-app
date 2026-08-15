@@ -5486,7 +5486,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
       <TopHeader title="Practice Lists" subtitle="Personal & group playlists" />
 
       <div style={{ padding: "16px 24px 0", display: "flex", gap: 8 }}>
-        {[["lists", "Lists"], ["assignments", "Assignments"], ["solfege", "Solfège"]].map(([key, label]) => (
+        {[["lists", "Lists"], ["assignments", "Assignments"], ["solfege", "Solfège"], ["tools", "Keyboard"]].map(([key, label]) => (
           <button
             key={key} onClick={() => setView(key)} className="dvbc-tap"
             style={{
@@ -5922,6 +5922,410 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
           })}
         </div>
       )}
+
+      {view === "tools" && <PracticeTools />}
+    </div>
+  );
+}
+
+/* ============================================================
+   Keyboard / Organ + Vocal Pitch Monitor
+   ============================================================ */
+
+const KB_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function kbMidiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+function kbMidiToName(midi) {
+  const name = KB_NOTE_NAMES[((midi % 12) + 12) % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  return { name, octave, label: `${name}${octave}`, isSharp: name.includes("#") };
+}
+function kbFreqToMidi(freq) {
+  return 12 * Math.log2(freq / 440) + 69;
+}
+
+const KB_TIMBRES = [
+  { key: "piano", label: "Piano" },
+  { key: "organ", label: "Organ" },
+  { key: "choir", label: "Choir" },
+];
+
+// Reuses the app's shared AudioContext singleton (see playChime above) so the keyboard,
+// pitch monitor, and notification chime never spin up multiple concurrent contexts.
+function getSharedAudioCtx() {
+  _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === "suspended") _audioCtx.resume();
+  return _audioCtx;
+}
+
+function kbPlayVoice(ctx, freq, timbre) {
+  const now = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0;
+  master.connect(ctx.destination);
+  const nodes = [];
+
+  if (timbre === "organ") {
+    // Drawbar-style organ: fundamental + octave + fifth + second octave, sustained while held.
+    const partials = [
+      { ratio: 1, gain: 0.5 }, { ratio: 2, gain: 0.28 }, { ratio: 3, gain: 0.12 }, { ratio: 4, gain: 0.16 },
+    ];
+    partials.forEach((p) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq * p.ratio;
+      const g = ctx.createGain();
+      g.gain.value = p.gain;
+      osc.connect(g);
+      g.connect(master);
+      osc.start(now);
+      nodes.push(osc);
+    });
+    master.gain.linearRampToValueAtTime(0.5, now + 0.02);
+  } else if (timbre === "choir") {
+    // Soft sustained "ooh": sawtooth through a lowpass filter, slow attack, gentle vibrato.
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = freq;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = freq * 3.2;
+    filter.Q.value = 0.7;
+    const vibrato = ctx.createOscillator();
+    vibrato.frequency.value = 5.2;
+    const vibratoGain = ctx.createGain();
+    vibratoGain.gain.value = freq * 0.006;
+    vibrato.connect(vibratoGain);
+    vibratoGain.connect(osc.frequency);
+    osc.connect(filter);
+    filter.connect(master);
+    osc.start(now);
+    vibrato.start(now);
+    nodes.push(osc, vibrato);
+    master.gain.linearRampToValueAtTime(0.45, now + 0.35);
+  } else {
+    // Piano: bright quick attack, exponential decay toward a lower sustain, two detuned oscillators.
+    [1, 1.003].forEach((detune) => {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = freq * detune;
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      osc.connect(g);
+      g.connect(master);
+      osc.start(now);
+      nodes.push(osc);
+    });
+    master.gain.linearRampToValueAtTime(0.55, now + 0.008);
+    master.gain.exponentialRampToValueAtTime(0.18, now + 0.4);
+  }
+
+  return {
+    stop() {
+      const t = ctx.currentTime;
+      const release = timbre === "choir" ? 0.35 : timbre === "organ" ? 0.12 : 0.25;
+      master.gain.cancelScheduledValues(t);
+      master.gain.setValueAtTime(master.gain.value, t);
+      master.gain.linearRampToValueAtTime(0, t + release);
+      nodes.forEach((n) => n.stop(t + release + 0.02));
+    },
+  };
+}
+
+function Keyboard() {
+  const [timbre, setTimbre] = useState("piano");
+  const [sustain, setSustain] = useState(false);
+  const [activeNotes, setActiveNotes] = useState({});
+  const voicesRef = useRef({});
+  const scrollRef = useRef(null);
+
+  const LOW_MIDI = 36;  // C2
+  const HIGH_MIDI = 84; // C6 -> 4 octaves
+
+  const midiRange = [];
+  for (let m = LOW_MIDI; m <= HIGH_MIDI; m++) midiRange.push(m);
+  const whiteKeys = midiRange.filter((m) => !kbMidiToName(m).isSharp);
+  const WHITE_W = 42, WHITE_H = 168, BLACK_W = 26, BLACK_H = 104;
+
+  const startNote = useCallback((midi) => {
+    const ctx = getSharedAudioCtx();
+    if (voicesRef.current[midi]) return;
+    voicesRef.current[midi] = kbPlayVoice(ctx, kbMidiToFreq(midi), timbre);
+    setActiveNotes((prev) => ({ ...prev, [midi]: true }));
+  }, [timbre]);
+
+  const stopNote = useCallback((midi) => {
+    if (sustain) return;
+    const v = voicesRef.current[midi];
+    if (v) { v.stop(); delete voicesRef.current[midi]; }
+    setActiveNotes((prev) => { const next = { ...prev }; delete next[midi]; return next; });
+  }, [sustain]);
+
+  const releaseAllSustained = useCallback(() => {
+    Object.keys(voicesRef.current).forEach((k) => voicesRef.current[k].stop());
+    voicesRef.current = {};
+    setActiveNotes({});
+  }, []);
+
+  useEffect(() => () => releaseAllSustained(), []);
+
+  const blackOffset = (midi) => {
+    const precedingWhiteCount = whiteKeys.filter((w) => w < midi).length;
+    return precedingWhiteCount * WHITE_W - BLACK_W / 2;
+  };
+
+  return (
+    <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink }}>Keyboard</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {KB_TIMBRES.map((t) => (
+            <button
+              key={t.key} onClick={() => setTimbre(t.key)} className="dvbc-tap"
+              style={{
+                border: `1.4px solid ${timbre === t.key ? C.garnet : C.lilacLine}`,
+                background: timbre === t.key ? gradient() : "#fff",
+                color: timbre === t.key ? "#fff" : C.inkSoft,
+                fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 20, cursor: "pointer",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <button
+          onClick={() => { const next = !sustain; setSustain(next); if (!next) releaseAllSustained(); }}
+          className="dvbc-tap"
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            border: `1.4px solid ${sustain ? C.garnet : C.lilacLine}`,
+            background: sustain ? C.roseBg : "#fff",
+            color: sustain ? C.roseDeep : C.inkSoft,
+            fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 20, cursor: "pointer",
+          }}
+        >
+          <Repeat size={13} /> Sustain {sustain ? "On" : "Off"}
+        </button>
+        <div style={{ fontSize: 10.5, color: C.inkSoft }}>C2 – C6 · scroll for more keys</div>
+      </div>
+
+      <div ref={scrollRef} style={{ overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
+        <div style={{ position: "relative", height: WHITE_H, width: whiteKeys.length * WHITE_W, touchAction: "none" }}>
+          {whiteKeys.map((midi, i) => {
+            const active = !!activeNotes[midi];
+            const isC = kbMidiToName(midi).name === "C";
+            return (
+              <div
+                key={midi}
+                onMouseDown={() => startNote(midi)}
+                onMouseUp={() => stopNote(midi)}
+                onMouseLeave={() => stopNote(midi)}
+                onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
+                onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
+                style={{
+                  position: "absolute", left: i * WHITE_W, top: 0, width: WHITE_W - 2, height: WHITE_H,
+                  background: active ? C.lilacSoft : "#fff",
+                  border: `1px solid ${C.lilacLine}`, borderRadius: "0 0 6px 6px",
+                  display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 8,
+                  boxShadow: active ? "inset 0 4px 10px rgba(138,35,50,0.18)" : "0 2px 4px rgba(0,0,0,0.04)",
+                  cursor: "pointer", userSelect: "none",
+                }}
+              >
+                {isC && <span style={{ fontSize: 9.5, color: C.inkSoft, fontWeight: 700 }}>{kbMidiToName(midi).label}</span>}
+              </div>
+            );
+          })}
+          {midiRange.filter((m) => kbMidiToName(m).isSharp).map((midi) => {
+            const active = !!activeNotes[midi];
+            return (
+              <div
+                key={midi}
+                onMouseDown={() => startNote(midi)}
+                onMouseUp={() => stopNote(midi)}
+                onMouseLeave={() => stopNote(midi)}
+                onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
+                onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
+                style={{
+                  position: "absolute", left: blackOffset(midi), top: 0, width: BLACK_W, height: BLACK_H, zIndex: 2,
+                  background: active ? C.garnet : "#231A1D",
+                  borderRadius: "0 0 4px 4px", cursor: "pointer", userSelect: "none",
+                  boxShadow: active ? "inset 0 3px 8px rgba(0,0,0,0.4)" : "0 3px 6px rgba(0,0,0,0.35)",
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Standard autocorrelation pitch detector (ACF2+), returns frequency in Hz or -1 if no clear pitch.
+function kbDetectPitch(buf, sampleRate) {
+  const size = buf.length;
+  let rms = 0;
+  for (let i = 0; i < size; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / size);
+  if (rms < 0.01) return -1;
+
+  let r1 = 0, r2 = size - 1;
+  const threshold = 0.2;
+  for (let i = 0; i < size / 2; i++) { if (Math.abs(buf[i]) < threshold) { r1 = i; break; } }
+  for (let i = 1; i < size / 2; i++) { if (Math.abs(buf[size - i]) < threshold) { r2 = size - i; break; } }
+  const trimmed = buf.slice(r1, r2);
+  const n = trimmed.length;
+
+  const c = new Array(n).fill(0);
+  for (let lag = 0; lag < n; lag++) {
+    for (let i = 0; i < n - lag; i++) c[lag] += trimmed[i] * trimmed[i + lag];
+  }
+  let d = 0;
+  while (d < n - 1 && c[d] > c[d + 1]) d++;
+  let maxVal = -1, maxPos = -1;
+  for (let i = d; i < n; i++) { if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; } }
+  let T0 = maxPos;
+  if (T0 <= 0) return -1;
+  const x1 = c[T0 - 1] || 0, x2 = c[T0], x3 = c[T0 + 1] || 0;
+  const a = (x1 + x3 - 2 * x2) / 2;
+  const b = (x3 - x1) / 2;
+  if (a) T0 = T0 - b / (2 * a);
+  return sampleRate / T0;
+}
+
+function PitchMonitor() {
+  const [listening, setListening] = useState(false);
+  const [error, setError] = useState("");
+  const [reading, setReading] = useState(null);
+  const ctxRef = useRef(null);
+  const streamRef = useRef(null);
+  const analyserRef = useRef(null);
+  const rafRef = useRef(null);
+  const bufRef = useRef(null);
+
+  const stopListening = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+    analyserRef.current = null;
+    setListening(false);
+    setReading(null);
+  }, []);
+
+  useEffect(() => () => stopListening(), []);
+
+  const tick = useCallback(() => {
+    const analyser = analyserRef.current;
+    const ctx = ctxRef.current;
+    if (!analyser || !ctx) return;
+    const buf = bufRef.current;
+    analyser.getFloatTimeDomainData(buf);
+    const freq = kbDetectPitch(buf, ctx.sampleRate);
+    if (freq !== -1 && freq > 60 && freq < 1500) {
+      const midiFloat = kbFreqToMidi(freq);
+      const midi = Math.round(midiFloat);
+      const cents = Math.round((midiFloat - midi) * 100);
+      const { label } = kbMidiToName(midi);
+      setReading({ label, cents, freq: Math.round(freq * 10) / 10 });
+    } else {
+      setReading(null);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const startListening = useCallback(async () => {
+    setError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      streamRef.current = stream;
+      const ctx = getSharedAudioCtx();
+      ctxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      bufRef.current = new Float32Array(analyser.fftSize);
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      setListening(true);
+      rafRef.current = requestAnimationFrame(tick);
+    } catch (e) {
+      setError("Microphone access denied or unavailable.");
+    }
+  }, [tick]);
+
+  const cents = reading?.cents ?? 0;
+  const inTune = reading && Math.abs(cents) <= 6;
+  const needlePct = Math.max(-50, Math.min(50, cents));
+
+  return (
+    <div style={{ background: C.card, border: `1.4px solid ${C.lilacLine}`, borderRadius: 16, padding: 16, marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink }}>Vocal Pitch Monitor</div>
+        <button
+          onClick={() => (listening ? stopListening() : startListening())}
+          className="dvbc-tap"
+          style={{
+            display: "flex", alignItems: "center", gap: 6, border: "none", cursor: "pointer",
+            background: listening ? C.roseBg : gradient(), color: listening ? C.roseDeep : "#fff",
+            fontSize: 11.5, fontWeight: 700, padding: "8px 14px", borderRadius: 20,
+          }}
+        >
+          {listening ? <><Square size={12} /> Stop</> : <><Mic size={13} /> Start</>}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.roseDeep, fontSize: 12, marginBottom: 10 }}>
+          <AlertCircle size={13} /> {error}
+        </div>
+      )}
+
+      {!listening && !error && (
+        <div style={{ fontSize: 12.5, color: C.inkSoft }}>Tap Start and sing or hum a note to check your pitch.</div>
+      )}
+
+      {listening && (
+        <div>
+          <div style={{ textAlign: "center", marginBottom: 14 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 42, fontWeight: 700, color: reading ? (inTune ? C.sage : C.garnet) : C.lilacLine }}>
+              {reading ? reading.label : "—"}
+            </div>
+            <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 2 }}>
+              {reading ? `${reading.freq} Hz · ${cents > 0 ? "+" : ""}${cents} cents` : "listening…"}
+            </div>
+          </div>
+
+          <div style={{ position: "relative", height: 34, background: C.lilacSoft, borderRadius: 17, overflow: "hidden" }}>
+            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, background: C.lilacLine }} />
+            <div style={{ position: "absolute", left: "35%", right: "35%", top: 0, bottom: 0, background: "rgba(79,122,92,0.15)" }} />
+            {reading && (
+              <div
+                style={{
+                  position: "absolute", top: 4, bottom: 4, width: 6, borderRadius: 3,
+                  left: `calc(${50 + needlePct}% - 3px)`,
+                  background: inTune ? C.sage : C.garnet,
+                  transition: "left 0.08s linear",
+                }}
+              />
+            )}
+            <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: C.inkSoft }}>flat</div>
+            <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: C.inkSoft }}>sharp</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PracticeTools() {
+  return (
+    <div style={{ padding: "18px 24px 0" }}>
+      <Keyboard />
+      <PitchMonitor />
     </div>
   );
 }
