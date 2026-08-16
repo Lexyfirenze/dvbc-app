@@ -6079,6 +6079,7 @@ function Keyboard() {
   const [sustain, setSustain] = useState(false);
   const [activeNotes, setActiveNotes] = useState({});
   const voicesRef = useRef({});
+  const keysDownRef = useRef(new Set()); // midi notes physically held right now (finger still down)
   const scrollRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -6140,22 +6141,34 @@ function Keyboard() {
 
   const startNote = useCallback((midi) => {
     const ctx = getSharedAudioCtx();
+    keysDownRef.current.add(midi);
     if (voicesRef.current[midi]) return;
     voicesRef.current[midi] = kbPlayVoice(ctx, kbMidiToFreq(midi), timbre);
     setActiveNotes((prev) => ({ ...prev, [midi]: true }));
   }, [timbre]);
 
   const stopNote = useCallback((midi) => {
-    if (sustain) return;
+    keysDownRef.current.delete(midi);
+    if (sustain) return; // pedal down: let the note keep ringing until the pedal lifts
     const v = voicesRef.current[midi];
     if (v) { v.stop(); delete voicesRef.current[midi]; }
     setActiveNotes((prev) => { const next = { ...prev }; delete next[midi]; return next; });
   }, [sustain]);
 
+  // Releases only the notes that are ringing solely because the pedal was down —
+  // keys the player still has a finger on keep sounding uninterrupted.
   const releaseAllSustained = useCallback(() => {
-    Object.keys(voicesRef.current).forEach((k) => voicesRef.current[k].stop());
-    voicesRef.current = {};
-    setActiveNotes({});
+    Object.keys(voicesRef.current).forEach((k) => {
+      const midi = Number(k);
+      if (keysDownRef.current.has(midi)) return; // still physically held — leave it playing
+      voicesRef.current[midi].stop();
+      delete voicesRef.current[midi];
+    });
+    setActiveNotes((prev) => {
+      const next = {};
+      keysDownRef.current.forEach((midi) => { if (prev[midi]) next[midi] = true; });
+      return next;
+    });
   }, []);
 
   useEffect(() => () => releaseAllSustained(), []);
