@@ -6142,13 +6142,26 @@ function Keyboard() {
   const startNote = useCallback((midi) => {
     const ctx = getSharedAudioCtx();
     keysDownRef.current.add(midi);
+    // With sustain on, a new key press releases any previous notes that are only
+    // still ringing because of the pedal (finger already lifted) — chords stay
+    // intact since notes you're still physically holding are left alone.
+    if (sustain) {
+      Object.keys(voicesRef.current).forEach((k) => {
+        const heldMidi = Number(k);
+        if (heldMidi === midi) return;
+        if (keysDownRef.current.has(heldMidi)) return; // still physically held — leave it playing
+        voicesRef.current[heldMidi].stop();
+        delete voicesRef.current[heldMidi];
+        setActiveNotes((prev) => { const next = { ...prev }; delete next[heldMidi]; return next; });
+      });
+    }
     if (voicesRef.current[midi]) {
       // Already sounding (e.g. a stuck note from a missed release) — retrigger cleanly.
       voicesRef.current[midi].stop();
     }
     voicesRef.current[midi] = kbPlayVoice(ctx, kbMidiToFreq(midi), timbre);
     setActiveNotes((prev) => ({ ...prev, [midi]: true }));
-  }, [timbre]);
+  }, [timbre, sustain]);
 
   // Safety-net panic button: force-clears every voice and tracked key state,
   // in case a note ever gets stuck from a missed touch/mouse release event.
