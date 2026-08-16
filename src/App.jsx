@@ -5951,6 +5951,10 @@ function kbFreqToMidi(freq) {
   return 12 * Math.log2(freq / 440) + 69;
 }
 
+// Note names used for the transpose readout, sharps preferred (matches how most
+// choir/hymnal keys are conventionally written, e.g. Bb hymns aside).
+const KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
 const KB_TIMBRES = [
   { key: "piano", label: "Piano" },
   { key: "organ", label: "Organ" },
@@ -6200,6 +6204,7 @@ function Keyboard() {
   const [layerTimbre, setLayerTimbre] = useState("none"); // secondary voice layered on top, "none" = off
   const [layerGain, setLayerGain] = useState(0.65); // secondary layer kept quieter than the primary by default
   const [transpose, setTranspose] = useState(0); // semitone shift applied to sounding pitch, key layout stays put
+  const [baseKeyIndex, setBaseKeyIndex] = useState(0); // original/written key of the piece, tap to cycle — default C
   const [sustain, setSustain] = useState(false);
   const [activeNotes, setActiveNotes] = useState({});
   const voicesRef = useRef({});
@@ -6402,8 +6407,12 @@ function Keyboard() {
 
   // Transpose stepper: shifts the sounding pitch up/down by semitones without moving
   // the key layout — lets an accompanist keep familiar fingering while matching the
-  // choir's comfortable range. Tap the readout to reset back to 0 (concert pitch).
+  // choir's comfortable range. The "Key" chip sets the piece's original/written key;
+  // the readout then shows the resulting key once transpose is applied.
   const TRANSPOSE_MIN = -12, TRANSPOSE_MAX = 12;
+  const resultKeyIndex = ((baseKeyIndex + transpose) % 12 + 12) % 12;
+  const resultKeyName = KEY_NAMES[resultKeyIndex];
+  const baseKeyName = KEY_NAMES[baseKeyIndex];
   const transposeStepper = (compact) => (
     <div style={{
       display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
@@ -6411,6 +6420,17 @@ function Keyboard() {
       borderRadius: 20, padding: "2px 4px",
       background: transpose !== 0 ? (compact ? "rgba(178,35,50,0.18)" : C.roseBg) : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
     }}>
+      <button
+        onClick={() => setBaseKeyIndex((k) => (k + 1) % 12)}
+        title="Tap to set the piece's original key"
+        style={{
+          border: "none", background: "transparent", cursor: "pointer",
+          fontSize: 10.5, fontWeight: 700, padding: "0 4px",
+          color: compact ? "rgba(255,255,255,0.6)" : C.inkSoft, opacity: 0.85,
+        }}
+      >
+        Key: {baseKeyName}
+      </button>
       <button
         onClick={() => setTranspose((t) => Math.max(TRANSPOSE_MIN, t - 1))}
         className="dvbc-tap"
@@ -6420,14 +6440,14 @@ function Keyboard() {
       </button>
       <button
         onClick={() => setTranspose(0)}
-        title="Tap to reset to concert pitch"
+        title="Tap to reset to the original key"
         style={{
-          minWidth: 68, textAlign: "center", border: "none", background: "transparent", cursor: "pointer",
+          minWidth: 62, textAlign: "center", border: "none", background: "transparent", cursor: "pointer",
           fontSize: 11.5, fontWeight: 700,
           color: transpose !== 0 ? (compact ? "#fff" : C.garnet) : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
         }}
       >
-        {transpose === 0 ? "Transpose" : `${transpose > 0 ? "+" : ""}${transpose} st`}
+        {transpose === 0 ? baseKeyName : `${resultKeyName} (${transpose > 0 ? "+" : ""}${transpose})`}
       </button>
       <button
         onClick={() => setTranspose((t) => Math.min(TRANSPOSE_MAX, t + 1))}
