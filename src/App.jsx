@@ -5969,6 +5969,56 @@ function getSharedAudioCtx() {
   return _audioCtx;
 }
 
+// Generates a synthetic reverb impulse response (shaped noise burst) so we get a
+// convincing hall/room tail without shipping or downloading an actual IR audio file.
+function makeSyntheticImpulseResponse(ctx, durationSec = 2.4, decay = 2.2) {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.floor(sampleRate * durationSec);
+  const buffer = ctx.createBuffer(2, length, sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < length; i++) {
+      const t = i / length;
+      // White noise shaped by an exponential decay envelope, with a touch of
+      // channel-to-channel randomness for stereo width.
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+    }
+  }
+  return buffer;
+}
+
+let _keyboardBus = null;
+// Shared master bus for every keyboard voice: a "vocal pocket" EQ notch around
+// 400Hz (where alto/tenor voices sit) so the keyboard doesn't mask live singers,
+// followed by a reverb send (dry + convolved wet, mixed at a fixed 0.35 ratio)
+// for a sense of room/hall space. Built once per AudioContext and reused.
+function getKeyboardBus(ctx) {
+  if (_keyboardBus && _keyboardBus.ctx === ctx) return _keyboardBus;
+
+  const vocalPocketEQ = ctx.createBiquadFilter();
+  vocalPocketEQ.type = "peaking";
+  vocalPocketEQ.frequency.value = 400;
+  vocalPocketEQ.Q.value = 1.0;
+  vocalPocketEQ.gain.value = -3.5;
+
+  const dryGain = ctx.createGain();
+  dryGain.gain.value = 0.65;
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = 0.35;
+
+  const convolver = ctx.createConvolver();
+  convolver.buffer = makeSyntheticImpulseResponse(ctx);
+
+  vocalPocketEQ.connect(dryGain);
+  dryGain.connect(ctx.destination);
+  vocalPocketEQ.connect(convolver);
+  convolver.connect(wetGain);
+  wetGain.connect(ctx.destination);
+
+  _keyboardBus = { ctx, input: vocalPocketEQ };
+  return _keyboardBus;
+}
+
 function kbPlayVoice(ctx, freq, timbre, gainScale = 1) {
   const now = ctx.currentTime;
   const master = ctx.createGain();
@@ -5976,7 +6026,7 @@ function kbPlayVoice(ctx, freq, timbre, gainScale = 1) {
   const outputScale = ctx.createGain();
   outputScale.gain.value = gainScale;
   master.connect(outputScale);
-  outputScale.connect(ctx.destination);
+  outputScale.connect(getKeyboardBus(ctx).input);
   const nodes = [];
 
   if (timbre === "organ") {
