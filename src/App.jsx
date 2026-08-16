@@ -5954,8 +5954,10 @@ function kbFreqToMidi(freq) {
 const KB_TIMBRES = [
   { key: "piano", label: "Piano" },
   { key: "organ", label: "Organ" },
+  { key: "superorgan", label: "Super Organ" },
   { key: "choir", label: "Choir" },
   { key: "strings", label: "Strings" },
+  { key: "superstrings", label: "Super Strings" },
   { key: "synth", label: "Synth" },
 ];
 
@@ -5991,6 +5993,71 @@ function kbPlayVoice(ctx, freq, timbre) {
       nodes.push(osc);
     });
     master.gain.linearRampToValueAtTime(0.5, now + 0.02);
+  } else if (timbre === "superorgan") {
+    // Full cathedral drawbar stack: sub-octave (16'), fundamental (8'), octave (4'),
+    // twelfth (2 2/3'), super-octave (2'), and a mixture partial — each doubled with
+    // a slightly detuned twin for that big, chorused pipe-organ character.
+    const partials = [
+      { ratio: 0.5, gain: 0.24 },  // 16' sub
+      { ratio: 1, gain: 0.42 },    // 8' fundamental
+      { ratio: 2, gain: 0.26 },    // 4' octave
+      { ratio: 3, gain: 0.16 },    // 2 2/3' twelfth
+      { ratio: 4, gain: 0.18 },    // 2' super-octave
+      { ratio: 6, gain: 0.09 },    // mixture
+      { ratio: 8, gain: 0.06 },    // mixture (higher)
+    ];
+    partials.forEach((p) => {
+      [0.998, 1.002].forEach((detune) => {
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = freq * p.ratio * detune;
+        const g = ctx.createGain();
+        g.gain.value = p.gain * 0.5;
+        osc.connect(g);
+        g.connect(master);
+        osc.start(now);
+        nodes.push(osc);
+      });
+    });
+    master.gain.linearRampToValueAtTime(0.62, now + 0.035);
+  } else if (timbre === "superstrings") {
+    // Large ensemble strings: six detuned sawtooths spread wide, plus a sub-octave
+    // layer for weight, gentle vibrato, and a slower bowed swell than the base Strings voice.
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = freq * 4.5;
+    filter.Q.value = 0.5;
+    filter.connect(master);
+    const vibrato = ctx.createOscillator();
+    vibrato.frequency.value = 4.6;
+    const vibratoGain = ctx.createGain();
+    vibratoGain.gain.value = freq * 0.004;
+    vibrato.start(now);
+    nodes.push(vibrato);
+    [0.985, 0.992, 0.998, 1.004, 1.01, 1.017].forEach((detune) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = freq * detune;
+      vibratoGain.connect(osc.frequency);
+      const g = ctx.createGain();
+      g.gain.value = 0.19;
+      osc.connect(g);
+      g.connect(filter);
+      osc.start(now);
+      nodes.push(osc);
+    });
+    vibrato.connect(vibratoGain);
+    // Sub-octave layer for extra body underneath the ensemble.
+    const subOsc = ctx.createOscillator();
+    subOsc.type = "sawtooth";
+    subOsc.frequency.value = freq * 0.5;
+    const subGain = ctx.createGain();
+    subGain.gain.value = 0.12;
+    subOsc.connect(subGain);
+    subGain.connect(filter);
+    subOsc.start(now);
+    nodes.push(subOsc);
+    master.gain.linearRampToValueAtTime(0.5, now + 0.28);
   } else if (timbre === "choir") {
     // Soft sustained "ooh": sawtooth through a lowpass filter, slow attack, gentle vibrato.
     const osc = ctx.createOscillator();
@@ -6065,7 +6132,8 @@ function kbPlayVoice(ctx, freq, timbre) {
   return {
     stop() {
       const t = ctx.currentTime;
-      const release = timbre === "choir" ? 0.35 : timbre === "strings" ? 0.3 : timbre === "organ" ? 0.12 : timbre === "synth" ? 0.08 : 0.25;
+      const release = timbre === "choir" ? 0.35 : timbre === "strings" ? 0.3 : timbre === "superstrings" ? 0.4
+        : timbre === "organ" ? 0.12 : timbre === "superorgan" ? 0.18 : timbre === "synth" ? 0.08 : 0.25;
       master.gain.cancelScheduledValues(t);
       master.gain.setValueAtTime(master.gain.value, t);
       master.gain.linearRampToValueAtTime(0, t + release);
@@ -6199,11 +6267,12 @@ function Keyboard() {
   useEffect(() => () => releaseAllSustained(), []);
 
   const timbreRow = (compact) => (
-    <div style={{ display: "flex", gap: 6 }}>
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
       {KB_TIMBRES.map((t) => (
         <button
           key={t.key} onClick={() => setTimbre(t.key)} className="dvbc-tap"
           style={{
+            flexShrink: 0, whiteSpace: "nowrap",
             border: `1.4px solid ${timbre === t.key ? C.garnet : (compact ? "rgba(255,255,255,0.3)" : C.lilacLine)}`,
             background: timbre === t.key ? gradient() : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
             color: timbre === t.key ? "#fff" : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
