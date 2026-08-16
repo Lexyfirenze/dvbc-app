@@ -6142,10 +6142,22 @@ function Keyboard() {
   const startNote = useCallback((midi) => {
     const ctx = getSharedAudioCtx();
     keysDownRef.current.add(midi);
-    if (voicesRef.current[midi]) return;
+    if (voicesRef.current[midi]) {
+      // Already sounding (e.g. a stuck note from a missed release) — retrigger cleanly.
+      voicesRef.current[midi].stop();
+    }
     voicesRef.current[midi] = kbPlayVoice(ctx, kbMidiToFreq(midi), timbre);
     setActiveNotes((prev) => ({ ...prev, [midi]: true }));
   }, [timbre]);
+
+  // Safety-net panic button: force-clears every voice and tracked key state,
+  // in case a note ever gets stuck from a missed touch/mouse release event.
+  const stopAllNotes = useCallback(() => {
+    Object.values(voicesRef.current).forEach((v) => v.stop());
+    voicesRef.current = {};
+    keysDownRef.current.clear();
+    setActiveNotes({});
+  }, []);
 
   const stopNote = useCallback((midi) => {
     keysDownRef.current.delete(midi);
@@ -6207,6 +6219,24 @@ function Keyboard() {
     </button>
   );
 
+  // Safety-net button: force-stops any note stuck on from a missed touch/mouse
+  // release event (e.g. a finger sliding off a key during a scroll gesture).
+  const stopAllButton = (compact) => (
+    <button
+      onClick={stopAllNotes}
+      className="dvbc-tap"
+      style={{
+        display: "flex", alignItems: "center", gap: 6,
+        border: `1.4px solid ${compact ? "rgba(255,255,255,0.3)" : C.lilacLine}`,
+        background: compact ? "rgba(255,255,255,0.08)" : "#fff",
+        color: compact ? "rgba(255,255,255,0.75)" : C.inkSoft,
+        fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 20, cursor: "pointer",
+      }}
+    >
+      <Square size={13} /> Stop all
+    </button>
+  );
+
   // Scroll arrows + tap-to-jump octave chips — dragging across the keys themselves doesn't
   // scroll (each key captures the touch to play its note), so this is the actual way to navigate.
   const scrollControls = (whiteW, compact) => {
@@ -6256,6 +6286,7 @@ function Keyboard() {
               onMouseLeave={() => stopNote(midi)}
               onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
               onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
+              onTouchCancel={(e) => { e.preventDefault(); stopNote(midi); }}
               style={{
                 position: "absolute", left: i * whiteW, top: 0, width: whiteW - 2, height: whiteH,
                 background: active ? C.lilacSoft : "#fff",
@@ -6279,6 +6310,7 @@ function Keyboard() {
               onMouseLeave={() => stopNote(midi)}
               onTouchStart={(e) => { e.preventDefault(); startNote(midi); }}
               onTouchEnd={(e) => { e.preventDefault(); stopNote(midi); }}
+              onTouchCancel={(e) => { e.preventDefault(); stopNote(midi); }}
               style={{
                 position: "absolute", left: blackOffset(midi), top: 0, width: blackW, height: blackH, zIndex: 2,
                 background: active ? C.garnet : "#231A1D",
@@ -6327,6 +6359,7 @@ function Keyboard() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {timbreRow(true)}
             {sustainButton(true)}
+            {stopAllButton(true)}
           </div>
           <button onClick={exitLandscape} className="dvbc-tap" style={{ width: 32, height: 32, borderRadius: "50%", border: "1.4px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <X size={16} color="#fff" />
@@ -6353,6 +6386,7 @@ function Keyboard() {
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         {sustainButton(false)}
+        {stopAllButton(false)}
         <button
           onClick={enterLandscape}
           className="dvbc-tap"
