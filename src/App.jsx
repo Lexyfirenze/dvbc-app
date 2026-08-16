@@ -5969,11 +5969,14 @@ function getSharedAudioCtx() {
   return _audioCtx;
 }
 
-function kbPlayVoice(ctx, freq, timbre) {
+function kbPlayVoice(ctx, freq, timbre, gainScale = 1) {
   const now = ctx.currentTime;
   const master = ctx.createGain();
   master.gain.value = 0;
-  master.connect(ctx.destination);
+  const outputScale = ctx.createGain();
+  outputScale.gain.value = gainScale;
+  master.connect(outputScale);
+  outputScale.connect(ctx.destination);
   const nodes = [];
 
   if (timbre === "organ") {
@@ -6144,6 +6147,8 @@ function kbPlayVoice(ctx, freq, timbre) {
 
 function Keyboard() {
   const [timbre, setTimbre] = useState("piano");
+  const [layerTimbre, setLayerTimbre] = useState("none"); // secondary voice layered on top, "none" = off
+  const [layerGain, setLayerGain] = useState(0.65); // secondary layer kept quieter than the primary by default
   const [sustain, setSustain] = useState(false);
   const [activeNotes, setActiveNotes] = useState({});
   const voicesRef = useRef({});
@@ -6227,9 +6232,19 @@ function Keyboard() {
       // Already sounding (e.g. a stuck note from a missed release) — retrigger cleanly.
       voicesRef.current[midi].stop();
     }
-    voicesRef.current[midi] = kbPlayVoice(ctx, kbMidiToFreq(midi), timbre);
+    const freq = kbMidiToFreq(midi);
+    const primaryVoice = kbPlayVoice(ctx, freq, timbre);
+    const layerVoice = (layerTimbre !== "none" && layerTimbre !== timbre)
+      ? kbPlayVoice(ctx, freq, layerTimbre, layerGain)
+      : null;
+    voicesRef.current[midi] = {
+      stop() {
+        primaryVoice.stop();
+        if (layerVoice) layerVoice.stop();
+      },
+    };
     setActiveNotes((prev) => ({ ...prev, [midi]: true }));
-  }, [timbre, sustain]);
+  }, [timbre, sustain, layerTimbre, layerGain]);
 
   // Safety-net panic button: force-clears every voice and tracked key state,
   // in case a note ever gets stuck from a missed touch/mouse release event.
@@ -6283,6 +6298,55 @@ function Keyboard() {
         </button>
       ))}
     </div>
+  );
+
+  // Layer voice picker: adds a second voice on top of the primary, e.g. Piano + Strings.
+  // "No Layer" (first chip) turns layering off and plays only the primary voice.
+  const layerRow = (compact) => (
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
+      {[{ key: "none", label: "No Layer" }, ...KB_TIMBRES].map((t) => (
+        <button
+          key={t.key} onClick={() => setLayerTimbre(t.key)} className="dvbc-tap"
+          style={{
+            flexShrink: 0, whiteSpace: "nowrap",
+            border: `1.4px solid ${layerTimbre === t.key ? C.sage : (compact ? "rgba(255,255,255,0.3)" : C.lilacLine)}`,
+            background: layerTimbre === t.key ? C.sage : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
+            color: layerTimbre === t.key ? "#fff" : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 20, cursor: "pointer",
+          }}
+        >
+          {t.key === "none" ? t.label : `+ ${t.label}`}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Quick 3-step balance for the layer voice's volume relative to the primary,
+  // shown only once a layer is actually selected.
+  const LAYER_BALANCE_STEPS = [
+    { value: 0.4, label: "Layer Soft" },
+    { value: 0.65, label: "Layer Even" },
+    { value: 0.9, label: "Layer Strong" },
+  ];
+  const layerGainRow = (compact) => (
+    layerTimbre === "none" ? null : (
+      <div style={{ display: "flex", gap: 6 }}>
+        {LAYER_BALANCE_STEPS.map((s) => (
+          <button
+            key={s.label} onClick={() => setLayerGain(s.value)} className="dvbc-tap"
+            style={{
+              flexShrink: 0, whiteSpace: "nowrap",
+              border: `1.4px solid ${layerGain === s.value ? C.garnet : (compact ? "rgba(255,255,255,0.3)" : C.lilacLine)}`,
+              background: layerGain === s.value ? gradient() : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
+              color: layerGain === s.value ? "#fff" : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
+              fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 20, cursor: "pointer",
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+    )
   );
 
   const sustainButton = (compact) => (
@@ -6437,15 +6501,19 @@ function Keyboard() {
     const needsScroll = boardWidth > availW;
     return (
       <div ref={containerRef} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#1A1219", display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", flexWrap: "wrap", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             {timbreRow(true)}
+            <button onClick={exitLandscape} className="dvbc-tap" style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", border: "1.4px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <X size={16} color="#fff" />
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {layerRow(true)}
+            {layerGainRow(true)}
             {sustainButton(true)}
             {stopAllButton(true)}
           </div>
-          <button onClick={exitLandscape} className="dvbc-tap" style={{ width: 32, height: 32, borderRadius: "50%", border: "1.4px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <X size={16} color="#fff" />
-          </button>
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 12px", minHeight: 0 }}>
           {scrollControls(whiteW, true)}
@@ -6464,6 +6532,11 @@ function Keyboard() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, color: C.ink }}>Keyboard</div>
         {timbreRow(false)}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        {layerRow(false)}
+        {layerGainRow(false)}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
