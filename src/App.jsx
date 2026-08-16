@@ -2,7 +2,7 @@ import AgoraRTC from "agora-rtc-sdk-ng";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Home, CheckSquare, Music2, User, Search, Bell, Play, Pause, LogOut,
   ChevronLeft, Star, Mail, Lock, Eye, EyeOff, Clock, MapPin, AlertCircle, UserPlus, Camera, Users, ListMusic, FileText,
-  Repeat, RotateCcw, RotateCw, X, Plus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2, Mic, Square,
+  Repeat, RotateCcw, RotateCw, X, Plus, Minus, Gauge, Download, WifiOff, MessageCircle, Phone, Trash2, Mic, Square,
   PhoneOff, Video, VideoOff, MicOff } from "lucide-react";
 import logoImg from "./assets/logo.jpg";
 import photoImg from "./assets/chorale-photo.jpg";
@@ -6199,6 +6199,7 @@ function Keyboard() {
   const [timbre, setTimbre] = useState("piano");
   const [layerTimbre, setLayerTimbre] = useState("none"); // secondary voice layered on top, "none" = off
   const [layerGain, setLayerGain] = useState(0.65); // secondary layer kept quieter than the primary by default
+  const [transpose, setTranspose] = useState(0); // semitone shift applied to sounding pitch, key layout stays put
   const [sustain, setSustain] = useState(false);
   const [activeNotes, setActiveNotes] = useState({});
   const voicesRef = useRef({});
@@ -6282,7 +6283,7 @@ function Keyboard() {
       // Already sounding (e.g. a stuck note from a missed release) — retrigger cleanly.
       voicesRef.current[midi].stop();
     }
-    const freq = kbMidiToFreq(midi);
+    const freq = kbMidiToFreq(midi + transpose);
     const primaryVoice = kbPlayVoice(ctx, freq, timbre);
     const layerVoice = (layerTimbre !== "none" && layerTimbre !== timbre)
       ? kbPlayVoice(ctx, freq, layerTimbre, layerGain)
@@ -6294,7 +6295,7 @@ function Keyboard() {
       },
     };
     setActiveNotes((prev) => ({ ...prev, [midi]: true }));
-  }, [timbre, sustain, layerTimbre, layerGain]);
+  }, [timbre, sustain, layerTimbre, layerGain, transpose]);
 
   // Safety-net panic button: force-clears every voice and tracked key state,
   // in case a note ever gets stuck from a missed touch/mouse release event.
@@ -6397,6 +6398,45 @@ function Keyboard() {
         ))}
       </div>
     )
+  );
+
+  // Transpose stepper: shifts the sounding pitch up/down by semitones without moving
+  // the key layout — lets an accompanist keep familiar fingering while matching the
+  // choir's comfortable range. Tap the readout to reset back to 0 (concert pitch).
+  const TRANSPOSE_MIN = -12, TRANSPOSE_MAX = 12;
+  const transposeStepper = (compact) => (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
+      border: `1.4px solid ${transpose !== 0 ? C.garnet : (compact ? "rgba(255,255,255,0.3)" : C.lilacLine)}`,
+      borderRadius: 20, padding: "2px 4px",
+      background: transpose !== 0 ? (compact ? "rgba(178,35,50,0.18)" : C.roseBg) : (compact ? "rgba(255,255,255,0.08)" : "#fff"),
+    }}>
+      <button
+        onClick={() => setTranspose((t) => Math.max(TRANSPOSE_MIN, t - 1))}
+        className="dvbc-tap"
+        style={{ width: 24, height: 24, borderRadius: "50%", border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+      >
+        <Minus size={12} color={compact ? "rgba(255,255,255,0.85)" : C.inkSoft} />
+      </button>
+      <button
+        onClick={() => setTranspose(0)}
+        title="Tap to reset to concert pitch"
+        style={{
+          minWidth: 68, textAlign: "center", border: "none", background: "transparent", cursor: "pointer",
+          fontSize: 11.5, fontWeight: 700,
+          color: transpose !== 0 ? (compact ? "#fff" : C.garnet) : (compact ? "rgba(255,255,255,0.75)" : C.inkSoft),
+        }}
+      >
+        {transpose === 0 ? "Transpose" : `${transpose > 0 ? "+" : ""}${transpose} st`}
+      </button>
+      <button
+        onClick={() => setTranspose((t) => Math.min(TRANSPOSE_MAX, t + 1))}
+        className="dvbc-tap"
+        style={{ width: 24, height: 24, borderRadius: "50%", border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+      >
+        <Plus size={12} color={compact ? "rgba(255,255,255,0.85)" : C.inkSoft} />
+      </button>
+    </div>
   );
 
   const sustainButton = (compact) => (
@@ -6561,6 +6601,7 @@ function Keyboard() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {layerRow(true)}
             {layerGainRow(true)}
+            {transposeStepper(true)}
             {sustainButton(true)}
             {stopAllButton(true)}
           </div>
@@ -6590,6 +6631,7 @@ function Keyboard() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        {transposeStepper(false)}
         {sustainButton(false)}
         {stopAllButton(false)}
         <button
