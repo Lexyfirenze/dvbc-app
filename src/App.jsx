@@ -4762,8 +4762,8 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
         if (cancelled) return;
         setPdfDoc(doc);
         setNumPages(doc.numPages);
-      } catch {
-        if (!cancelled) setError("Couldn't render this PDF. Please try again.");
+      } catch (err) {
+        if (!cancelled) setError(`Couldn't render this PDF — ${err?.message || err?.name || "unknown error"}`);
       }
     })();
     return () => { cancelled = true; };
