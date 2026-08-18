@@ -10,6 +10,9 @@ import photoImg2 from "./assets/chorale-photo-2.jpg";
 import photoImg3 from "./assets/chorale-photo-3.jpg";
 import { supabase } from "./supabaseClient";import StaffRenderer from "./components/StaffRenderer";import NotationFlashcards from "./components/NotationFlashcards";import RhythmGame from "./components/RhythmGame";
 import { generateICS, downloadICS } from './utils/dvbc-ics-export.js';
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 /* ---------- Design tokens: "Sunday Performance" warm concert-hall palette ---------- */
 /* Actual values live in LIGHT_THEME/DARK_THEME below; this is just the initial shape. */
@@ -4573,25 +4576,164 @@ function CommunicationSettings({
   );
 }
 
-function SheetMusicViewer({ path, title, onClose }) {
-  const [signedUrl, setSignedUrl] = useState(null);
+const BASE_RENDER_SCALE = 2; // fixed high-res render for crisp strokes/text regardless of zoom
+const ANNOTATION_COLORS = ["#8A2332", "#1F5FA8", "#2B7A4B", "#111111"];
+
+function AnnotatedPdfPage({ pdfDoc, pageNumber, zoomLevel, drawMode, tool, color, strokeWidth, strokes, onStrokeComplete }) {
+  const renderCanvasRef = useRef(null);
+  const overlayCanvasRef = useRef(null);
+  const [naturalSize, setNaturalSize] = useState(null); // { width, height } at zoom=1 (CSS px)
+  const drawingRef = useRef(null); // { points: [{x,y} in canvas px] }
+
+  // Render the page once at fixed high resolution.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const page = await pdfDoc.getPage(pageNumber);
+      if (cancelled) return;
+      const viewport = page.getViewport({ scale: BASE_RENDER_SCALE });
+      const canvas = renderCanvasRef.current;
+      if (!canvas) return;
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      if (cancelled) return;
+      setNaturalSize({ width: viewport.width / BASE_RENDER_SCALE, height: viewport.height / BASE_RENDER_SCALE });
+    })();
+    return () => { cancelled = true; };
+  }, [pdfDoc, pageNumber]);
+
+  const redrawStrokes = useCallback(() => {
+    const canvas = overlayCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    (strokes || []).forEach((s) => {
+      if (!s.points || s.points.length < 2) return;
+      ctx.beginPath();
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = s.color;
+      ctx.globalAlpha = s.tool === "highlight" ? 0.35 : 1;
+      ctx.lineWidth = (s.tool === "highlight" ? 16 : (s.stroke_width || 2.5)) * (canvas.width / 1000) * 3.2;
+      s.points.forEach((p, i) => {
+        const x = p.x * canvas.width, y = p.y * canvas.height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+  }, [strokes]);
+
+  // Resize overlay canvas to match displayed (CSS) size at the current zoom, then redraw.
+  useEffect(() => {
+    if (!naturalSize) return;
+    const canvas = overlayCanvasRef.current;
+    if (!canvas) return;
+    const w = Math.round(naturalSize.width * zoomLevel);
+    const h = Math.round(naturalSize.height * zoomLevel);
+    canvas.width = w;
+    canvas.height = h;
+    redrawStrokes();
+  }, [naturalSize, zoomLevel, redrawStrokes]);
+
+  useEffect(() => { redrawStrokes(); }, [strokes, redrawStrokes]);
+
+  const canvasPointFromEvent = (e) => {
+    const canvas = overlayCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const ratioX = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const ratioY = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+    return { x: ratioX, y: ratioY };
+  };
+
+  const onPointerDown = (e) => {
+    if (!drawMode) return;
+    e.target.setPointerCapture?.(e.pointerId);
+    const pt = canvasPointFromEvent(e);
+    drawingRef.current = { points: [pt] };
+  };
+
+  const onPointerMove = (e) => {
+    if (!drawMode || !drawingRef.current) return;
+    const pt = canvasPointFromEvent(e);
+    drawingRef.current.points.push(pt);
+    const canvas = overlayCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const pts = drawingRef.current.points;
+    const prev = pts[pts.length - 2] || pts[0];
+    ctx.beginPath();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = tool === "highlight" ? 0.35 : 1;
+    ctx.lineWidth = (tool === "highlight" ? 16 : strokeWidth) * (canvas.width / 1000) * 3.2;
+    ctx.moveTo(prev.x * canvas.width, prev.y * canvas.height);
+    ctx.lineTo(pt.x * canvas.width, pt.y * canvas.height);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  };
+
+  const onPointerUp = () => {
+    if (!drawMode || !drawingRef.current) return;
+    const points = drawingRef.current.points;
+    drawingRef.current = null;
+    if (points.length < 2) return;
+    onStrokeComplete(pageNumber, { tool, color, stroke_width: strokeWidth, points });
+  };
+
+  return (
+    <div style={{ position: "relative", margin: "0 auto 14px", width: naturalSize ? naturalSize.width * zoomLevel : "auto" }}>
+      <canvas ref={renderCanvasRef} style={{ display: "block", width: naturalSize ? naturalSize.width * zoomLevel : "100%", height: naturalSize ? naturalSize.height * zoomLevel : "auto", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
+      <canvas
+        ref={overlayCanvasRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+        style={{
+          position: "absolute", top: 0, left: 0,
+          width: naturalSize ? naturalSize.width * zoomLevel : "100%", height: naturalSize ? naturalSize.height * zoomLevel : "100%",
+          touchAction: drawMode ? "none" : "auto", pointerEvents: drawMode ? "auto" : "none",
+        }}
+      />
+    </div>
+  );
+}
+
+function SheetMusicViewer({ path, title, onClose, userId }) {
+  const [sourceUrl, setSourceUrl] = useState(null);
   const [isOfflineCopy, setIsOfflineCopy] = useState(false);
   const [error, setError] = useState("");
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [numPages, setNumPages] = useState(0);
   const blobUrlRef = useRef(null);
 
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [drawMode, setDrawMode] = useState(false);
+  const [tool, setTool] = useState("pen"); // 'pen' | 'highlight'
+  const [color, setColor] = useState(ANNOTATION_COLORS[0]);
+  const strokeWidth = 2.5;
+
+  const [strokesByPage, setStrokesByPage] = useState({}); // { [pageNumber]: [{id, tool, color, stroke_width, points}] }
+  const [recentStrokeIds, setRecentStrokeIds] = useState([]); // for Undo, most recent last
+
+  // Resolve a playable source: prefer offline copy, else a signed URL.
   useEffect(() => {
     let active = true;
-    setSignedUrl(null);
+    setSourceUrl(null);
     setIsOfflineCopy(false);
     setError("");
+    setPdfDoc(null);
+    setNumPages(0);
 
     (async () => {
-      // Prefer an already-downloaded copy so the sheet opens with no connection at all.
       const offlineBlobUrl = await getSheetOfflineBlobUrl(path);
       if (!active) return;
       if (offlineBlobUrl) {
         blobUrlRef.current = offlineBlobUrl;
-        setSignedUrl(`${offlineBlobUrl}#toolbar=0&navpanes=0&scrollbar=0`);
+        setSourceUrl(offlineBlobUrl);
         setIsOfflineCopy(true);
         return;
       }
@@ -4601,9 +4743,7 @@ function SheetMusicViewer({ path, title, onClose }) {
         setError("Couldn't load the sheet music. Please try again.");
         return;
       }
-      // #toolbar=0&navpanes=0 hides the browser PDF viewer's download/print controls
-      // (supported in Chrome/most Android WebViews; not a hard guarantee everywhere).
-      setSignedUrl(`${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0`);
+      setSourceUrl(data.signedUrl);
     })();
 
     return () => {
@@ -4612,12 +4752,74 @@ function SheetMusicViewer({ path, title, onClose }) {
     };
   }, [path]);
 
+  // Load the PDF document via pdf.js once we have a source URL.
+  useEffect(() => {
+    if (!sourceUrl) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const doc = await pdfjsLib.getDocument(sourceUrl).promise;
+        if (cancelled) return;
+        setPdfDoc(doc);
+        setNumPages(doc.numPages);
+      } catch {
+        if (!cancelled) setError("Couldn't render this PDF. Please try again.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sourceUrl]);
+
+  // Load this member's existing annotations for this sheet.
+  useEffect(() => {
+    if (!path || !userId) return;
+    let active = true;
+    supabase.from("sheet_annotations").select("*").eq("sheet_path", path).eq("user_id", userId).then(({ data }) => {
+      if (!active || !data) return;
+      const grouped = {};
+      data.forEach((row) => {
+        if (!grouped[row.page_number]) grouped[row.page_number] = [];
+        grouped[row.page_number].push(row);
+      });
+      setStrokesByPage(grouped);
+    });
+    return () => { active = false; };
+  }, [path, userId]);
+
+  const handleStrokeComplete = async (pageNumber, stroke) => {
+    if (!userId) return;
+    const { data, error: insertError } = await supabase
+      .from("sheet_annotations")
+      .insert({ sheet_path: path, user_id: userId, page_number: pageNumber, tool: stroke.tool, color: stroke.color, stroke_width: stroke.stroke_width, points: stroke.points })
+      .select()
+      .single();
+    if (insertError || !data) return;
+    setStrokesByPage((prev) => ({ ...prev, [pageNumber]: [...(prev[pageNumber] || []), data] }));
+    setRecentStrokeIds((prev) => [...prev, { id: data.id, page: pageNumber }]);
+  };
+
+  const undoLastStroke = async () => {
+    const last = recentStrokeIds[recentStrokeIds.length - 1];
+    if (!last) return;
+    setRecentStrokeIds((prev) => prev.slice(0, -1));
+    setStrokesByPage((prev) => ({ ...prev, [last.page]: (prev[last.page] || []).filter((s) => s.id !== last.id) }));
+    await supabase.from("sheet_annotations").delete().eq("id", last.id);
+  };
+
+  const clearAllAnnotations = async () => {
+    if (!window.confirm("Clear all your markups on this sheet? This can't be undone.")) return;
+    setStrokesByPage({});
+    setRecentStrokeIds([]);
+    await supabase.from("sheet_annotations").delete().eq("sheet_path", path).eq("user_id", userId);
+  };
+
+  const hasAnyStrokes = Object.values(strokesByPage).some((arr) => arr && arr.length > 0);
+
   return (
     <div
       style={{ position: "fixed", inset: 0, zIndex: 50, background: C.garnetDark, display: "flex", flexDirection: "column" }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 20px 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
           {isOfflineCopy && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10.5, marginTop: 2 }}>Viewing saved offline copy</div>}
@@ -4627,8 +4829,59 @@ function SheetMusicViewer({ path, title, onClose }) {
         </button>
       </div>
 
-      <div style={{ flex: 1, position: "relative" }}>
-        {!signedUrl && !error && (
+      {/* Toolbar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 10px", flexWrap: "wrap" }}>
+        <button
+          onClick={() => setDrawMode((d) => !d)} className="dvbc-tap"
+          style={{ display: "flex", alignItems: "center", gap: 5, background: drawMode ? "#fff" : "rgba(255,255,255,0.14)", color: drawMode ? C.garnet : "#fff", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+        >
+          {drawMode ? "Drawing" : "Draw"}
+        </button>
+        {drawMode && (
+          <>
+            <button
+              onClick={() => setTool("pen")} className="dvbc-tap"
+              style={{ background: tool === "pen" ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+            >
+              Pen
+            </button>
+            <button
+              onClick={() => setTool("highlight")} className="dvbc-tap"
+              style={{ background: tool === "highlight" ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+            >
+              Highlight
+            </button>
+            <div style={{ display: "flex", gap: 5 }}>
+              {ANNOTATION_COLORS.map((c) => (
+                <button
+                  key={c} onClick={() => setColor(c)} className="dvbc-tap"
+                  style={{ width: 20, height: 20, borderRadius: "50%", background: c, border: color === c ? "2px solid #fff" : "2px solid transparent", cursor: "pointer", padding: 0 }}
+                />
+              ))}
+            </div>
+            <button onClick={undoLastStroke} disabled={!recentStrokeIds.length} className="dvbc-tap" style={{ background: "none", border: "none", color: recentStrokeIds.length ? "#fff" : "rgba(255,255,255,0.35)", fontSize: 11.5, fontWeight: 700, cursor: recentStrokeIds.length ? "pointer" : "default" }}>
+              Undo
+            </button>
+            {hasAnyStrokes && (
+              <button onClick={clearAllAnnotations} className="dvbc-tap" style={{ background: "none", border: "none", color: "#F3B4C4", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                Clear
+              </button>
+            )}
+          </>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+          <button onClick={() => setZoomLevel((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))} className="dvbc-tap" style={{ background: "rgba(255,255,255,0.14)", border: "none", borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <Minus size={13} color="#fff" />
+          </button>
+          <span style={{ color: "rgba(255,255,255,0.75)", fontSize: 11, fontWeight: 700, width: 34, textAlign: "center" }}>{Math.round(zoomLevel * 100)}%</span>
+          <button onClick={() => setZoomLevel((z) => Math.min(3, +(z + 0.15).toFixed(2)))} className="dvbc-tap" style={{ background: "rgba(255,255,255,0.14)", border: "none", borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <Plus size={13} color="#fff" />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, position: "relative", overflow: "auto", padding: "0 16px 24px" }}>
+        {!pdfDoc && !error && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
             Loading…
           </div>
@@ -4638,13 +4891,20 @@ function SheetMusicViewer({ path, title, onClose }) {
             {error}
           </div>
         )}
-        {signedUrl && (
-          <iframe
-            src={signedUrl}
-            title={title}
-            style={{ width: "100%", height: "100%", border: "none" }}
+        {pdfDoc && Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
+          <AnnotatedPdfPage
+            key={pageNumber}
+            pdfDoc={pdfDoc}
+            pageNumber={pageNumber}
+            zoomLevel={zoomLevel}
+            drawMode={drawMode}
+            tool={tool}
+            color={color}
+            strokeWidth={strokeWidth}
+            strokes={strokesByPage[pageNumber] || []}
+            onStrokeComplete={handleStrokeComplete}
           />
-        )}
+        ))}
       </div>
     </div>
   );
@@ -5484,7 +5744,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
           </div>
         </div>
         {viewingSheet && (
-          <SheetMusicViewer path={viewingSheet.path} title={viewingSheet.title} onClose={() => setViewingSheet(null)} />
+          <SheetMusicViewer path={viewingSheet.path} title={viewingSheet.title} onClose={() => setViewingSheet(null)} userId={myUserId} />
         )}
       </div>
     );
@@ -5652,7 +5912,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
           </div>
         )}
         {viewingSheet && (
-          <SheetMusicViewer path={viewingSheet.path} title={viewingSheet.title} onClose={() => setViewingSheet(null)} />
+          <SheetMusicViewer path={viewingSheet.path} title={viewingSheet.title} onClose={() => setViewingSheet(null)} userId={myUserId} />
         )}
       </div>
     );
