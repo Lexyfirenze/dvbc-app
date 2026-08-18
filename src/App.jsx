@@ -5106,7 +5106,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     return () => { active = false; };
   }, [currentTrack?.id, activeAudioUrl]);
 
-  const [downloadedAudio, setDownloadedAudio] = useState(new Set());
+  const [downloadedAudio, setDownloadedAudio] = useState(new Set()); // Set of audio_url strings
   const [downloadedSheets, setDownloadedSheets] = useState(new Set());
   const [offlineBusyId, setOfflineBusyId] = useState(null);
   const [offlineError, setOfflineError] = useState("");
@@ -5114,8 +5114,13 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
   useEffect(() => {
     let active = true;
     const allTracks = lists.flatMap((l) => l.tracks);
-    Promise.all(allTracks.map(async (t) => [t.id, await isAudioDownloaded(t.audio_url)])).then((entries) => {
-      if (active) setDownloadedAudio(new Set(entries.filter(([, ok]) => ok).map(([id]) => id)));
+    const allAudioUrls = [];
+    allTracks.forEach((t) => {
+      if (t.audio_url) allAudioUrls.push(t.audio_url);
+      (t.parts || []).forEach((p) => { if (p.audio_url) allAudioUrls.push(p.audio_url); });
+    });
+    Promise.all(allAudioUrls.map(async (url) => [url, await isAudioDownloaded(url)])).then((entries) => {
+      if (active) setDownloadedAudio(new Set(entries.filter(([, ok]) => ok).map(([url]) => url)));
     });
     Promise.all(allTracks.filter((t) => t.sheet_pdf_url).map(async (t) => [t.id, await isSheetDownloaded(t.sheet_pdf_url)])).then((entries) => {
       if (active) setDownloadedSheets(new Set(entries.filter(([, ok]) => ok).map(([id]) => id)));
@@ -5123,21 +5128,25 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     return () => { active = false; };
   }, [lists]);
 
-  const downloadTrackAudio = async (track) => {
-    setOfflineBusyId(`audio-${track.id}`);
+  // busyKey/url let this work for a track's Full Mix audio or any of its per-part files.
+  const downloadAudioUrl = async (busyKey, url) => {
+    setOfflineBusyId(`audio-${busyKey}`);
     setOfflineError("");
-    const { error } = await downloadAudioOffline(track.audio_url);
+    const { error } = await downloadAudioOffline(url);
     if (error) setOfflineError(error);
-    else setDownloadedAudio((prev) => new Set(prev).add(track.id));
+    else setDownloadedAudio((prev) => new Set(prev).add(url));
     setOfflineBusyId(null);
   };
 
-  const removeTrackAudio = async (track) => {
-    setOfflineBusyId(`audio-${track.id}`);
-    await removeAudioOffline(track.audio_url);
-    setDownloadedAudio((prev) => { const next = new Set(prev); next.delete(track.id); return next; });
+  const removeAudioUrl = async (busyKey, url) => {
+    setOfflineBusyId(`audio-${busyKey}`);
+    await removeAudioOffline(url);
+    setDownloadedAudio((prev) => { const next = new Set(prev); next.delete(url); return next; });
     setOfflineBusyId(null);
   };
+
+  const downloadTrackAudio = (track) => downloadAudioUrl(track.id, track.audio_url);
+  const removeTrackAudio = (track) => removeAudioUrl(track.id, track.audio_url);
 
   const downloadTrackSheet = async (track) => {
     setOfflineBusyId(`sheet-${track.id}`);
@@ -5336,14 +5345,14 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
                 <FileText size={18} color="#fff" />
               </button>
             )}
-            {currentTrack.audio_url && (
+            {activeAudioUrl && (
               <button
-                onClick={() => (downloadedAudio.has(currentTrack.id) ? removeTrackAudio(currentTrack) : downloadTrackAudio(currentTrack))}
-                disabled={offlineBusyId === `audio-${currentTrack.id}`} className="dvbc-tap"
-                style={{ background: "none", border: "none", display: "flex", cursor: "pointer", padding: 0, opacity: offlineBusyId === `audio-${currentTrack.id}` ? 0.5 : 1 }}
-                title={downloadedAudio.has(currentTrack.id) ? "Downloaded for offline use — tap to remove" : "Save audio for offline use"}
+                onClick={() => (downloadedAudio.has(activeAudioUrl) ? removeAudioUrl(`${currentTrack.id}-${activePart}`, activeAudioUrl) : downloadAudioUrl(`${currentTrack.id}-${activePart}`, activeAudioUrl))}
+                disabled={offlineBusyId === `audio-${currentTrack.id}-${activePart}`} className="dvbc-tap"
+                style={{ background: "none", border: "none", display: "flex", cursor: "pointer", padding: 0, opacity: offlineBusyId === `audio-${currentTrack.id}-${activePart}` ? 0.5 : 1 }}
+                title={downloadedAudio.has(activeAudioUrl) ? `${activePart} downloaded for offline use — tap to remove` : `Save ${activePart} for offline use`}
               >
-                {downloadedAudio.has(currentTrack.id) ? <CheckSquare size={18} color="#fff" /> : <Download size={18} color="rgba(255,255,255,0.8)" />}
+                {downloadedAudio.has(activeAudioUrl) ? <CheckSquare size={18} color="#fff" /> : <Download size={18} color="rgba(255,255,255,0.8)" />}
               </button>
             )}
           </div>
@@ -5385,18 +5394,33 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
 
           {trackHasParts && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
-              {TRACK_PART_NAMES.filter((p) => p === "Full Mix" || currentTrack.parts.some((cp) => cp.part_name === p)).map((p) => (
-                <button
-                  key={p} onClick={() => switchPart(p)} className="dvbc-tap"
-                  style={{
-                    background: activePart === p ? "#fff" : "rgba(255,255,255,0.14)",
-                    color: activePart === p ? C.garnet : "rgba(255,255,255,0.85)",
-                    border: "none", borderRadius: 999, padding: "6px 13px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
-                  }}
-                >
-                  {p}
-                </button>
-              ))}
+              {TRACK_PART_NAMES.filter((p) => p === "Full Mix" || currentTrack.parts.some((cp) => cp.part_name === p)).map((p) => {
+                const partUrl = p === "Full Mix" ? currentTrack.audio_url : currentTrack.parts.find((cp) => cp.part_name === p)?.audio_url;
+                const partDownloaded = partUrl && downloadedAudio.has(partUrl);
+                const partBusyKey = `${currentTrack.id}-${p}`;
+                return (
+                  <div key={p} style={{ display: "flex", alignItems: "center", gap: 3, background: activePart === p ? "#fff" : "rgba(255,255,255,0.14)", borderRadius: 999, padding: "3px 3px 3px 13px" }}>
+                    <button
+                      onClick={() => switchPart(p)} className="dvbc-tap"
+                      style={{ background: "none", border: "none", color: activePart === p ? C.garnet : "rgba(255,255,255,0.85)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: "3px 4px 3px 0" }}
+                    >
+                      {p}
+                    </button>
+                    {partUrl && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); partDownloaded ? removeAudioUrl(partBusyKey, partUrl) : downloadAudioUrl(partBusyKey, partUrl); }}
+                        disabled={offlineBusyId === `audio-${partBusyKey}`} className="dvbc-tap"
+                        title={partDownloaded ? `${p} saved offline — tap to remove` : `Save ${p} for offline use`}
+                        style={{ background: "none", border: "none", display: "flex", cursor: "pointer", padding: 4, opacity: offlineBusyId === `audio-${partBusyKey}` ? 0.5 : 1 }}
+                      >
+                        {partDownloaded
+                          ? <CheckSquare size={12} color={activePart === p ? C.sage : "#fff"} />
+                          : <Download size={12} color={activePart === p ? C.inkSoft : "rgba(255,255,255,0.6)"} />}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -5516,7 +5540,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
                 {t.audio_url && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <OfflineToggle
-                      downloaded={downloadedAudio.has(t.id)} busy={offlineBusyId === `audio-${t.id}`}
+                      downloaded={downloadedAudio.has(t.audio_url)} busy={offlineBusyId === `audio-${t.id}`}
                       onDownload={() => downloadTrackAudio(t)} onRemove={() => removeTrackAudio(t)}
                     />
                   </div>
