@@ -4974,7 +4974,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
   const RATES = [1, 1.25, 1.5, 0.75];
   const [loopStart, setLoopStart] = useState(null);
   const [loopEnd, setLoopEnd] = useState(null);
-  const TRACK_PART_NAMES = ["Full Mix", "Soprano", "Alto", "Tenor", "Bass"];
+  const TRACK_PART_NAMES = ["Full Mix", "Accompaniment", "Soprano 1", "Soprano 2", "Alto 1", "Alto 2", "Tenor 1", "Tenor 2", "Bass 1", "Bass 2"];
   const [activePart, setActivePart] = useState("Full Mix");
   const [trackPartFiles, setTrackPartFiles] = useState({}); // { "Soprano": File, ... }
   const pendingSeekRef = useRef(null);
@@ -5877,11 +5877,11 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
                   <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Voice part tracks (optional)</label>
                   <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Upload a separate recording per part so members can switch between them while practising.</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {["Soprano", "Alto", "Tenor", "Bass"].map((partName) => {
+                    {["Accompaniment", "Soprano 1", "Soprano 2", "Alto 1", "Alto 2", "Tenor 1", "Tenor 2", "Bass 1", "Bass 2"].map((partName) => {
                       const existingPart = editingTrack?.parts?.find((p) => p.part_name === partName);
                       return (
                         <div key={partName} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 11.5, fontWeight: 700, color: C.plum, width: 58, flexShrink: 0 }}>{partName}</span>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: C.plum, width: 82, flexShrink: 0 }}>{partName}</span>
                           <input
                             type="file" accept="*/*"
                             onChange={(e) => setTrackPartFiles((prev) => ({ ...prev, [partName]: e.target.files?.[0] || null }))}
