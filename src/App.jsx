@@ -4755,15 +4755,21 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
   // Load the PDF document via pdf.js once we have a source URL.
   useEffect(() => {
     if (!sourceUrl) return;
+    if (typeof sourceUrl !== "string" || sourceUrl.trim() === "") {
+      setError(`Internal error: sourceUrl was not a valid string (got ${typeof sourceUrl}: ${JSON.stringify(sourceUrl)})`);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const doc = await pdfjsLib.getDocument(sourceUrl).promise;
+        console.log("[SheetMusicViewer] loading PDF, sourceUrl:", sourceUrl, "workerSrc:", pdfjsLib.GlobalWorkerOptions.workerSrc);
+        const doc = await pdfjsLib.getDocument({ url: sourceUrl }).promise;
         if (cancelled) return;
         setPdfDoc(doc);
         setNumPages(doc.numPages);
       } catch (err) {
-        if (!cancelled) setError(`Couldn't render this PDF — ${err?.message || err?.name || "unknown error"}`);
+        console.error("[SheetMusicViewer] getDocument failed. sourceUrl was:", JSON.stringify(sourceUrl), "error:", err);
+        if (!cancelled) setError(`Couldn't render this PDF — ${err?.message || err?.name || "unknown error"} (url: ${String(sourceUrl).slice(0, 60)})`);
       }
     })();
     return () => { cancelled = true; };
