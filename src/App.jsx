@@ -4685,6 +4685,8 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
   const [repeatIds, setRepeatIds] = useState(() => new Set());
   const audioRef = useRef(null);
   const RATES = [1, 1.25, 1.5, 0.75];
+  const [loopStart, setLoopStart] = useState(null);
+  const [loopEnd, setLoopEnd] = useState(null);
 
   /* ---------- Assignments ---------- */
   const [assignments, setAssignments] = useState([]);
@@ -4855,7 +4857,12 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setProgress(audio.currentTime);
+    const onTime = () => {
+      setProgress(audio.currentTime);
+      if (loopStart != null && loopEnd != null && audio.currentTime >= loopEnd) {
+        audio.currentTime = loopStart;
+      }
+    };
     const onLoaded = () => setDuration(audio.duration || 0);
     const onEnd = () => {
       if (currentTrackId && repeatIds.has(currentTrackId)) {
@@ -4873,7 +4880,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
       audio.removeEventListener("loadedmetadata", onLoaded);
       audio.removeEventListener("ended", onEnd);
     };
-  }, [currentTrackId, repeatIds]);
+  }, [currentTrackId, repeatIds, loopStart, loopEnd]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = playbackRate;
@@ -4988,6 +4995,8 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     setProgress(0);
     setIsPlaying(true);
     setPlayerExpanded(true);
+    setLoopStart(null);
+    setLoopEnd(null);
     setTimeout(() => { if (audioRef.current) { audioRef.current.playbackRate = playbackRate; audioRef.current.play(); } }, 0);
   };
 
@@ -5007,8 +5016,28 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     setCurrentTrackId(track.id);
     setProgress(0);
     setIsPlaying(true);
+    setLoopStart(null);
+    setLoopEnd(null);
     setTimeout(() => { if (audioRef.current) { audioRef.current.playbackRate = playbackRate; audioRef.current.play(); } }, 0);
   };
+
+  const setLoopPoint = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const t = audio.currentTime;
+    if (loopStart == null) {
+      setLoopStart(t);
+    } else if (loopEnd == null) {
+      if (t <= loopStart) { setLoopStart(t); return; } // treat as re-setting A
+      setLoopEnd(t);
+    } else {
+      // both already set — start a fresh loop from here
+      setLoopStart(t);
+      setLoopEnd(null);
+    }
+  };
+
+  const clearLoop = () => { setLoopStart(null); setLoopEnd(null); };
 
   const skip = (secs) => {
     const audio = audioRef.current;
@@ -5302,7 +5331,26 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
 
           <div onClick={seekTo} style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.22)", cursor: "pointer", position: "relative", marginTop: currentTrack.composer ? 0 : 18 }}>
             <div style={{ height: "100%", borderRadius: 999, background: "#fff", width: `${duration ? (progress / duration) * 100 : 0}%` }} />
+            {duration > 0 && loopStart != null && (
+              <div style={{ position: "absolute", top: -4, left: `${(loopStart / duration) * 100}%`, width: 2, height: 13, background: C.roseDeep || "#e0507a", borderRadius: 1 }} />
+            )}
+            {duration > 0 && loopEnd != null && (
+              <div style={{ position: "absolute", top: -4, left: `${(loopEnd / duration) * 100}%`, width: 2, height: 13, background: C.roseDeep || "#e0507a", borderRadius: 1 }} />
+            )}
+            {duration > 0 && loopStart != null && loopEnd != null && (
+              <div style={{ position: "absolute", top: 0, left: `${(loopStart / duration) * 100}%`, width: `${((loopEnd - loopStart) / duration) * 100}%`, height: "100%", background: "rgba(255,255,255,0.35)", borderRadius: 999 }} />
+            )}
           </div>
+          {(loopStart != null || loopEnd != null) && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.75)", letterSpacing: 0.5 }}>
+                LOOP {formatDuration(loopStart || 0)}{loopEnd != null ? ` – ${formatDuration(loopEnd)}` : " – set B"}
+              </span>
+              <button onClick={clearLoop} className="dvbc-tap" style={{ background: "none", border: "none", color: "rgba(255,255,255,0.75)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                Clear
+              </button>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{formatDuration(progress)}</div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>-{formatDuration(Math.max(0, duration - progress))}</div>
@@ -5326,6 +5374,17 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
             </button>
             <button onClick={() => toggleRepeat(currentTrack.id)} className="dvbc-tap" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
               <Repeat size={18} color={isRepeating ? "#fff" : "rgba(255,255,255,0.4)"} />
+            </button>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+            <button
+              onClick={setLoopPoint} className="dvbc-tap"
+              style={{
+                background: loopStart != null ? "rgba(255,255,255,0.18)" : "none", border: `1px solid ${loopStart != null ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.3)"}`,
+                borderRadius: 999, padding: "6px 16px", cursor: "pointer", color: "#fff", fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+              }}
+            >
+              {loopStart == null ? "Set Loop A" : loopEnd == null ? "Set Loop B" : "Restart Loop"}
             </button>
           </div>
         </div>
