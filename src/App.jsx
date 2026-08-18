@@ -4687,6 +4687,16 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
   const RATES = [1, 1.25, 1.5, 0.75];
   const [loopStart, setLoopStart] = useState(null);
   const [loopEnd, setLoopEnd] = useState(null);
+  const TRACK_PART_NAMES = ["Full Mix", "Soprano", "Alto", "Tenor", "Bass"];
+  const [activePart, setActivePart] = useState("Full Mix");
+  const [trackPartFiles, setTrackPartFiles] = useState({}); // { "Soprano": File, ... }
+  const pendingSeekRef = useRef(null);
+  const switchPart = (part) => {
+    if (part === activePart) return;
+    const audio = audioRef.current;
+    pendingSeekRef.current = audio ? audio.currentTime : 0;
+    setActivePart(part);
+  };
 
   /* ---------- Assignments ---------- */
   const [assignments, setAssignments] = useState([]);
@@ -4839,14 +4849,21 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
 
   const loadLists = useCallback(async () => {
     setLoading(true);
-    const [listsRes, tracksRes] = await Promise.all([
+    const [listsRes, tracksRes, partsRes] = await Promise.all([
       supabase.from("practice_lists").select("*").order("display_order", { ascending: true }),
       supabase.from("practice_tracks").select("*").order("display_order", { ascending: true }),
+      supabase.from("practice_track_parts").select("*"),
     ]);
+    const partsByTrack = {};
+    (partsRes.data || []).forEach((p) => {
+      if (!partsByTrack[p.track_id]) partsByTrack[p.track_id] = [];
+      partsByTrack[p.track_id].push(p);
+    });
     const tracksByList = {};
     (tracksRes.data || []).forEach((t) => {
+      const track = { ...t, parts: partsByTrack[t.id] || [] };
       if (!tracksByList[t.practice_list_id]) tracksByList[t.practice_list_id] = [];
-      tracksByList[t.practice_list_id].push(t);
+      tracksByList[t.practice_list_id].push(track);
     });
     setLists((listsRes.data || []).map((l) => ({ ...l, tracks: tracksByList[l.id] || [] })));
     setLoading(false);
@@ -4863,7 +4880,14 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
         audio.currentTime = loopStart;
       }
     };
-    const onLoaded = () => setDuration(audio.duration || 0);
+    const onLoaded = () => {
+      setDuration(audio.duration || 0);
+      if (pendingSeekRef.current != null) {
+        audio.currentTime = pendingSeekRef.current;
+        pendingSeekRef.current = null;
+        if (isPlaying) audio.play();
+      }
+    };
     const onEnd = () => {
       if (currentTrackId && repeatIds.has(currentTrackId)) {
         audio.currentTime = 0;
@@ -4997,6 +5021,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     setPlayerExpanded(true);
     setLoopStart(null);
     setLoopEnd(null);
+    setActivePart("Full Mix");
     setTimeout(() => { if (audioRef.current) { audioRef.current.playbackRate = playbackRate; audioRef.current.play(); } }, 0);
   };
 
@@ -5018,6 +5043,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     setIsPlaying(true);
     setLoopStart(null);
     setLoopEnd(null);
+    setActivePart("Full Mix");
     setTimeout(() => { if (audioRef.current) { audioRef.current.playbackRate = playbackRate; audioRef.current.play(); } }, 0);
   };
 
@@ -5067,14 +5093,18 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
   };
 
   const currentTrack = openList?.tracks.find((t) => t.id === currentTrackId);
+  const trackHasParts = (currentTrack?.parts || []).length > 0;
+  const activeAudioUrl = trackHasParts
+    ? (currentTrack.parts.find((p) => p.part_name === activePart)?.audio_url || currentTrack.audio_url)
+    : currentTrack?.audio_url;
 
   const [playableSrc, setPlayableSrc] = useState(null);
   useEffect(() => {
     let active = true;
-    if (!currentTrack?.audio_url) { setPlayableSrc(null); return; }
-    getPlayableAudioSrc(currentTrack.audio_url).then((src) => { if (active) setPlayableSrc(src); });
+    if (!activeAudioUrl) { setPlayableSrc(null); return; }
+    getPlayableAudioSrc(activeAudioUrl).then((src) => { if (active) setPlayableSrc(src); });
     return () => { active = false; };
-  }, [currentTrack?.id, currentTrack?.audio_url]);
+  }, [currentTrack?.id, activeAudioUrl]);
 
   const [downloadedAudio, setDownloadedAudio] = useState(new Set());
   const [downloadedSheets, setDownloadedSheets] = useState(new Set());
@@ -5190,6 +5220,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     setTrackForm({ title: "", composer: "" });
     setTrackAudioFile(null);
     setTrackPdfFile(null);
+    setTrackPartFiles({});
     setEditingTrack(null);
     setShowTrackForm(false);
     setTrackError("");
@@ -5200,6 +5231,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     setTrackForm({ title: track.title || "", composer: track.composer || "" });
     setTrackAudioFile(null);
     setTrackPdfFile(null);
+    setTrackPartFiles({});
     setShowTrackForm(true);
   };
 
@@ -5213,6 +5245,12 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     if (trackPdfFile && trackPdfFile.type !== "application/pdf" && !trackPdfFile.name.toLowerCase().endsWith(".pdf")) {
       setTrackError(`"${trackPdfFile.name}" doesn't look like a PDF. Please choose a .pdf file.`);
       return;
+    }
+    for (const [partName, file] of Object.entries(trackPartFiles)) {
+      if (file && !file.type.startsWith("audio/")) {
+        setTrackError(`"${file.name}" for ${partName} doesn't look like an audio file.`);
+        return;
+      }
     }
     setSavingTrack(true);
     setTrackError("");
@@ -5237,14 +5275,30 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
         sheet_pdf_url = pdfPath;
       }
       const payload = { title: trackForm.title.trim(), composer: trackForm.composer.trim(), audio_url, sheet_pdf_url, practice_list_id: openListId };
+      let trackId = editingTrack?.id;
       if (editingTrack) {
         const { error } = await supabase.from("practice_tracks").update(payload).eq("id", editingTrack.id);
         if (error) throw error;
       } else {
         const maxOrder = (openList?.tracks || []).reduce((m, t) => Math.max(m, t.display_order || 0), 0);
-        const { error } = await supabase.from("practice_tracks").insert({ ...payload, display_order: maxOrder + 1 });
+        const { data, error } = await supabase.from("practice_tracks").insert({ ...payload, display_order: maxOrder + 1 }).select().single();
         if (error) throw error;
+        trackId = data.id;
       }
+
+      const partEntries = Object.entries(trackPartFiles).filter(([, file]) => file);
+      for (const [partName, file] of partEntries) {
+        const ext = (file.name.split(".").pop() || "mp3").toLowerCase();
+        const path = `${folder}${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: partUploadError } = await supabase.storage.from("practice-audio").upload(path, file);
+        if (partUploadError) throw partUploadError;
+        const { data: partData } = supabase.storage.from("practice-audio").getPublicUrl(path);
+        const { error: partRowError } = await supabase
+          .from("practice_track_parts")
+          .upsert({ track_id: trackId, part_name: partName, audio_url: partData.publicUrl }, { onConflict: "track_id,part_name" });
+        if (partRowError) throw partRowError;
+      }
+
       resetTrackForm();
       loadLists();
     } catch (err) {
@@ -5271,7 +5325,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
     const isRepeating = repeatIds.has(currentTrack.id);
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 50, background: `linear-gradient(180deg, ${C.plum} 0%, ${C.garnetDark} 100%)`, display: "flex", flexDirection: "column" }}>
-        <audio ref={audioRef} src={playableSrc || currentTrack.audio_url} autoPlay />
+        <audio ref={audioRef} src={playableSrc || activeAudioUrl} autoPlay />
         <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 20px) 22px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, width: 44 }}>
             {currentTrack.sheet_pdf_url && (
@@ -5329,7 +5383,24 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
           <div style={{ color: "#fff", fontFamily: "'Playfair Display', serif", fontSize: 19, marginBottom: 2 }}>{currentTrack.title}</div>
           {currentTrack.composer && <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12.5, marginBottom: 18 }}>{currentTrack.composer}</div>}
 
-          <div onClick={seekTo} style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.22)", cursor: "pointer", position: "relative", marginTop: currentTrack.composer ? 0 : 18 }}>
+          {trackHasParts && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+              {TRACK_PART_NAMES.filter((p) => p === "Full Mix" || currentTrack.parts.some((cp) => cp.part_name === p)).map((p) => (
+                <button
+                  key={p} onClick={() => switchPart(p)} className="dvbc-tap"
+                  style={{
+                    background: activePart === p ? "#fff" : "rgba(255,255,255,0.14)",
+                    color: activePart === p ? C.garnet : "rgba(255,255,255,0.85)",
+                    border: "none", borderRadius: 999, padding: "6px 13px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div onClick={seekTo} style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.22)", cursor: "pointer", position: "relative", marginTop: currentTrack.composer || trackHasParts ? 0 : 18 }}>
             <div style={{ height: "100%", borderRadius: 999, background: "#fff", width: `${duration ? (progress / duration) * 100 : 0}%` }} />
             {duration > 0 && loopStart != null && (
               <div style={{ position: "absolute", top: -4, left: `${(loopStart / duration) * 100}%`, width: 2, height: 13, background: C.roseDeep || "#e0507a", borderRadius: 1 }} />
@@ -5487,9 +5558,30 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
                 <input style={inputStyle} placeholder="Track title" value={trackForm.title} onChange={(e) => setTrackForm({ ...trackForm, title: e.target.value })} />
                 <input style={inputStyle} placeholder="Composer (optional)" value={trackForm.composer} onChange={(e) => setTrackForm({ ...trackForm, composer: e.target.value })} />
                 <div>
-                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Audio</label>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Audio (Full Mix)</label>
                   <input type="file" accept="*/*" onChange={(e) => setTrackAudioFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5 }} />
                   {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 3 }}>Leave empty to keep the existing audio.</div>}
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Voice part tracks (optional)</label>
+                  <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Upload a separate recording per part so members can switch between them while practising.</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {["Soprano", "Alto", "Tenor", "Bass"].map((partName) => {
+                      const existingPart = editingTrack?.parts?.find((p) => p.part_name === partName);
+                      return (
+                        <div key={partName} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: C.plum, width: 58, flexShrink: 0 }}>{partName}</span>
+                          <input
+                            type="file" accept="*/*"
+                            onChange={(e) => setTrackPartFiles((prev) => ({ ...prev, [partName]: e.target.files?.[0] || null }))}
+                            style={{ fontSize: 11.5, flex: 1, minWidth: 0 }}
+                          />
+                          {existingPart && <CheckSquare size={14} color={C.plum} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {editingTrack && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Leave a part empty to keep its existing recording (checkmark shown where one exists).</div>}
                 </div>
                 <div>
                   <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Sheet music (PDF, optional)</label>
@@ -5522,7 +5614,7 @@ function PracticeLists({ isAdmin, profile, members = [] }) {
               padding: "14px 24px calc(env(safe-area-inset-bottom, 0px) + 14px)", cursor: "pointer",
             }}
           >
-            <audio ref={audioRef} src={playableSrc || currentTrack.audio_url} autoPlay />
+            <audio ref={audioRef} src={playableSrc || activeAudioUrl} autoPlay />
             <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.title}</div>
             <div onClick={(e) => { e.stopPropagation(); seekTo(e); }} style={{ height: 6, borderRadius: 999, background: C.lilacSoft, cursor: "pointer", position: "relative" }}>
               <div style={{ height: "100%", borderRadius: 999, background: gradient(), width: `${duration ? (progress / duration) * 100 : 0}%` }} />
