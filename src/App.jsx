@@ -4579,7 +4579,7 @@ function CommunicationSettings({
 const BASE_RENDER_SCALE = 2; // fixed high-res render for crisp strokes/text regardless of zoom
 const ANNOTATION_COLORS = ["#8A2332", "#1F5FA8", "#2B7A4B", "#111111"];
 
-function AnnotatedPdfPage({ pdfDoc, pageNumber, zoomLevel, drawMode, tool, color, strokeWidth, strokes, onStrokeComplete }) {
+function AnnotatedPdfPage({ pdfDoc, pageNumber, zoomLevel, drawMode, tool, color, strokeWidth, strokes, onStrokeComplete, onNaturalSize }) {
   const renderCanvasRef = useRef(null);
   const overlayCanvasRef = useRef(null);
   const [naturalSize, setNaturalSize] = useState(null); // { width, height } at zoom=1 (CSS px)
@@ -4599,7 +4599,9 @@ function AnnotatedPdfPage({ pdfDoc, pageNumber, zoomLevel, drawMode, tool, color
       const ctx = canvas.getContext("2d");
       await page.render({ canvasContext: ctx, viewport }).promise;
       if (cancelled) return;
-      setNaturalSize({ width: viewport.width / BASE_RENDER_SCALE, height: viewport.height / BASE_RENDER_SCALE });
+      const size = { width: viewport.width / BASE_RENDER_SCALE, height: viewport.height / BASE_RENDER_SCALE };
+      setNaturalSize(size);
+      if (onNaturalSize) onNaturalSize(pageNumber, size);
     })();
     return () => { cancelled = true; };
   }, [pdfDoc, pageNumber]);
@@ -4715,6 +4717,20 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
   const [tool, setTool] = useState("pen"); // 'pen' | 'highlight'
   const [color, setColor] = useState(ANNOTATION_COLORS[0]);
   const strokeWidth = 2.5;
+  const scrollContainerRef = useRef(null);
+  const [page1NaturalWidth, setPage1NaturalWidth] = useState(null);
+
+  const fitToWidth = () => {
+    const container = scrollContainerRef.current;
+    if (!container || !page1NaturalWidth) return;
+    const available = container.clientWidth - 32; // account for the container's own left/right padding
+    setZoomLevel(Math.max(0.15, Math.min(3, +(available / page1NaturalWidth).toFixed(2))));
+  };
+
+  useEffect(() => {
+    if (page1NaturalWidth) fitToWidth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page1NaturalWidth]);
 
   const [strokesByPage, setStrokesByPage] = useState({}); // { [pageNumber]: [{id, tool, color, stroke_width, points}] }
   const [recentStrokeIds, setRecentStrokeIds] = useState([]); // for Undo, most recent last
@@ -4767,6 +4783,7 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
         if (cancelled) return;
         setPdfDoc(doc);
         setNumPages(doc.numPages);
+        setPage1NaturalWidth(null); // triggers auto-fit again once page 1 reports its size below
       } catch (err) {
         console.error("[SheetMusicViewer] getDocument failed. sourceUrl was:", JSON.stringify(sourceUrl), "error:", err);
         if (!cancelled) setError(`Couldn't render this PDF — ${err?.message || err?.name || "unknown error"} (url: ${String(sourceUrl).slice(0, 60)})`);
@@ -4876,7 +4893,10 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
           </>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
-          <button onClick={() => setZoomLevel((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))} className="dvbc-tap" style={{ background: "rgba(255,255,255,0.14)", border: "none", borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <button onClick={fitToWidth} className="dvbc-tap" style={{ background: "rgba(255,255,255,0.14)", border: "none", borderRadius: 999, padding: "5px 11px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer", marginRight: 2 }}>
+            Fit
+          </button>
+          <button onClick={() => setZoomLevel((z) => Math.max(0.15, +(z - 0.15).toFixed(2)))} className="dvbc-tap" style={{ background: "rgba(255,255,255,0.14)", border: "none", borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <Minus size={13} color="#fff" />
           </button>
           <span style={{ color: "rgba(255,255,255,0.75)", fontSize: 11, fontWeight: 700, width: 34, textAlign: "center" }}>{Math.round(zoomLevel * 100)}%</span>
@@ -4886,7 +4906,7 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, position: "relative", overflow: "auto", padding: "0 16px 24px" }}>
+      <div ref={scrollContainerRef} style={{ flex: 1, position: "relative", overflow: "auto", padding: "0 16px 24px" }}>
         {!pdfDoc && !error && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
             Loading…
@@ -4909,6 +4929,7 @@ function SheetMusicViewer({ path, title, onClose, userId }) {
             strokeWidth={strokeWidth}
             strokes={strokesByPage[pageNumber] || []}
             onStrokeComplete={handleStrokeComplete}
+            onNaturalSize={pageNumber === 1 ? (num, size) => setPage1NaturalWidth(size.width) : undefined}
           />
         ))}
       </div>
